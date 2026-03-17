@@ -528,6 +528,7 @@ function SignOutIcon({ onClick }: { onClick: () => void }) {
 function ChannelView({ channel }: { channel: Doc<"channels"> }) {
   const messages = useQuery(api.messages.list, { channelId: channel._id });
   const sendMessage = useMutation(api.messages.send);
+  const viewer = useQuery(api.myFunctions.listNumbers, { count: 1 })?.viewer ?? null;
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -624,6 +625,7 @@ function ChannelView({ channel }: { channel: Doc<"channels"> }) {
               key={msg._id}
               message={msg}
               grouped={shouldGroup(messages[i - 1], msg)}
+              isOwn={viewer !== null && msg.authorEmail === viewer}
             />
           ))
         )}
@@ -766,9 +768,11 @@ function MessageInput({
 function MessageItem({
   message,
   grouped,
+  isOwn,
 }: {
   message: Doc<"messages">;
   grouped: boolean;
+  isOwn: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -779,26 +783,27 @@ function MessageItem({
       onMouseLeave={() => setHovered(false)}
       style={{
         display: "flex",
-        gap: 12,
-        padding: grouped ? "2px 24px" : "10px 24px 2px",
+        flexDirection: isOwn ? "row-reverse" : "row",
+        gap: 10,
+        padding: grouped ? "2px 16px" : "10px 16px 2px",
         background: hovered ? "rgba(255,255,255,0.02)" : "transparent",
         transition: "background 0.1s",
-        alignItems: "flex-start",
+        alignItems: "flex-end",
       }}
     >
-      {/* Avatar / timestamp column */}
-      <div style={{ width: 36, flexShrink: 0, paddingTop: 1 }}>
+      {/* Avatar */}
+      <div style={{ width: 32, flexShrink: 0 }}>
         {!grouped ? (
           <div
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 9,
-              background: stringToColor(message.authorEmail),
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              background: isOwn ? "var(--accent)" : stringToColor(message.authorEmail),
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: 700,
               color: "#fff",
             }}
@@ -811,8 +816,8 @@ function MessageItem({
               fontSize: 10,
               color: "var(--text-dim)",
               display: "block",
-              textAlign: "right",
-              paddingTop: 4,
+              textAlign: isOwn ? "left" : "right",
+              paddingBottom: 4,
               lineHeight: 1,
               opacity: hovered ? 1 : 0,
               transition: "opacity 0.1s",
@@ -823,44 +828,64 @@ function MessageItem({
         )}
       </div>
 
-      {/* Content */}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      {/* Bubble */}
+      <div
+        style={{
+          maxWidth: "65%",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: isOwn ? "flex-end" : "flex-start",
+          gap: 3,
+        }}
+      >
         {!grouped && (
           <div
             style={{
               display: "flex",
               alignItems: "baseline",
-              gap: 8,
-              marginBottom: 3,
+              gap: 6,
+              flexDirection: isOwn ? "row-reverse" : "row",
             }}
           >
             <span
               style={{
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: 600,
-                color: "var(--text)",
+                color: isOwn ? "var(--accent)" : "var(--text)",
                 letterSpacing: "-0.01em",
               }}
             >
-              {getHandle(message.authorEmail)}
+              {isOwn ? "You" : getHandle(message.authorEmail)}
             </span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
               {formatTime(message._creationTime)}
             </span>
           </div>
         )}
-        <p
+        <div
           style={{
-            margin: 0,
-            fontSize: 14,
-            color: "var(--text)",
-            lineHeight: 1.55,
-            wordBreak: "break-word",
-            whiteSpace: "pre-wrap",
+            background: isOwn ? "var(--accent)" : "var(--surface)",
+            border: isOwn ? "none" : "1px solid var(--border-strong)",
+            borderRadius: isOwn
+              ? grouped ? "14px 14px 4px 14px" : "14px 4px 14px 14px"
+              : grouped ? "14px 14px 14px 4px" : "4px 14px 14px 14px",
+            padding: "8px 12px",
+            boxShadow: isOwn ? "0 2px 8px var(--accent-glow)" : "none",
           }}
         >
-          {message.content}
-        </p>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 14,
+              color: isOwn ? "#fff" : "var(--text)",
+              lineHeight: 1.55,
+              wordBreak: "break-word",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {message.content}
+          </p>
+        </div>
       </div>
     </div>
   );
