@@ -1328,11 +1328,12 @@ function MessageItem({
               display: "flex",
               alignItems: "center",
               gap: 4,
-              marginTop: 2,
-              color: "var(--text-dim)",
-              fontSize: 10,
-              opacity: hovered ? 1 : 0.6,
+              marginTop: 4,
+              color: "var(--text-muted)",
+              fontSize: 10.5,
+              opacity: hovered ? 1 : 0.75,
               transition: "opacity 0.15s",
+              fontWeight: 500,
             }}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
