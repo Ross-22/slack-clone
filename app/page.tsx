@@ -557,6 +557,7 @@ function ChannelView({
   const messages = useQuery(api.messages.list, { channelId: channel._id });
   const sendMessage = useMutation(api.messages.send);
   const markRead = useMutation(api.readReceipts.markRead);
+  const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
   const readers = useQuery(api.readReceipts.channelReaders, { channelId: channel._id }) ?? [];
   const userData = useQuery(api.myFunctions.listNumbers, { count: 1 });
   const viewer = userData?.viewer ?? null;
