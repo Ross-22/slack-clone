@@ -161,7 +161,7 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  if (user === undefined) return null;
+  if (!user) return null;
 
   return (
     <div

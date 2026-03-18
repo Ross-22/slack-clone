@@ -165,6 +165,7 @@ export default function ProfilePage() {
   };
 
   if (user === undefined) return <div style={{ color: "var(--text-muted)", padding: 40 }}>Loading profile...</div>;
+  if (user === null) return <div style={{ color: "var(--text-muted)", padding: 40 }}>User not found</div>;
 
   return (
     <div
