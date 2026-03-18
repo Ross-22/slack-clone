@@ -747,6 +747,7 @@ function MessageInput({
         />
           <button
             onClick={() => setShowEmojiPicker((prev) => !prev)}
+            onMouseDown={(e) => e.preventDefault()}
             onMouseEnter={() => setEmojiHovered(true)}
             onMouseLeave={() => setEmojiHovered(false)}
             title="Add emoji"
@@ -772,6 +773,7 @@ function MessageInput({
           </button>
         <button
           onClick={onSend}
+          onMouseDown={(e) => e.preventDefault()}
           disabled={!canSend}
           onMouseEnter={() => setBtnHovered(true)}
           onMouseLeave={() => setBtnHovered(false)}
