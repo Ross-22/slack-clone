@@ -15,4 +15,11 @@ export default defineSchema({
     content: v.optional(v.string()),
     imageId: v.optional(v.id("_storage")),
   }).index("by_channel", ["channelId"]),
+  readReceipts: defineTable({
+    channelId: v.id("channels"),
+    userId: v.id("users"),
+    lastReadTime: v.number(),
+  })
+    .index("by_user_and_channel", ["userId", "channelId"])
+    .index("by_channel", ["channelId"]),
 });

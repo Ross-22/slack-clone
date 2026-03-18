@@ -12,6 +12,7 @@ export const listNumbers = query({
     const user = userId === null ? null : await ctx.db.get(userId);
     return {
       viewer: user?.email ?? null,
+      viewerId: userId,
       numbers: [] as number[],
     };
   },

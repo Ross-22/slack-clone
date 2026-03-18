@@ -55,3 +55,41 @@ export const generateUploadUrl = mutation({
     return await ctx.storage.generateUploadUrl();
   },
 });
+
+export const update = mutation({
+  args: {
+    messageId: v.id("messages"),
+    content: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+
+    const message = await ctx.db.get(args.messageId);
+    if (!message) throw new Error("Message not found");
+    if (message.userId !== userId) throw new Error("Unauthorized");
+
+    const content = args.content.trim();
+    if (!content && !message.imageId) {
+      throw new Error("Message cannot be empty");
+    }
+
+    await ctx.db.patch(args.messageId, { content });
+  },
+});
+
+export const remove = mutation({
+  args: {
+    messageId: v.id("messages"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+
+    const message = await ctx.db.get(args.messageId);
+    if (!message) throw new Error("Message not found");
+    if (message.userId !== userId) throw new Error("Unauthorized");
+
+    await ctx.db.delete(args.messageId);
+  },
+});

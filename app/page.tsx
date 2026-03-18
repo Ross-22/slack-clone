@@ -181,6 +181,7 @@ function Sidebar({
   const [showAddChannel, setShowAddChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState("");
   const createChannel = useMutation(api.channels.create);
+  const unreadChannels = useQuery(api.readReceipts.unreadChannels) ?? [];
   const { signOut } = useAuthActions();
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -310,6 +311,7 @@ function Sidebar({
             key={ch._id}
             channel={ch}
             active={ch._id === selectedChannelId}
+            isUnread={unreadChannels.includes(ch._id)}
             onClick={() => onSelectChannel(ch._id)}
           />
         ))}
@@ -361,10 +363,12 @@ function AddChannelButton({ onClick }: { onClick: () => void }) {
 function ChannelItem({
   channel,
   active,
+  isUnread,
   onClick,
 }: {
   channel: Doc<"channels">;
   active: boolean;
+  isUnread?: boolean;
   onClick: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -379,6 +383,7 @@ function ChannelItem({
         marginLeft: 4,
         display: "flex",
         alignItems: "center",
+        justifyContent: "space-between",
         gap: 7,
         padding: "5px 12px",
         background: active
@@ -395,31 +400,45 @@ function ChannelItem({
         transform: hovered && !active ? "translateX(3px)" : "translateX(0)",
       }}
     >
-      <span
-        style={{
-          fontSize: 11,
-          color: active ? "var(--accent)" : "var(--text-muted)",
-          fontWeight: 400,
-          transition: "color 0.12s",
-          lineHeight: 1,
-          marginTop: 1,
-        }}
-      >
-        #
-      </span>
-      <span
-        style={{
-          fontSize: 13,
-          color: active ? "var(--text)" : hovered ? "var(--text)" : "var(--text-muted)",
-          fontWeight: active ? 500 : 400,
-          transition: "color 0.12s",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {channel.name}
-      </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, overflow: "hidden" }}>
+        <span
+          style={{
+            fontSize: 11,
+            color: active ? "var(--accent)" : "var(--text-muted)",
+            fontWeight: 400,
+            transition: "color 0.12s",
+            lineHeight: 1,
+            marginTop: 1,
+          }}
+        >
+          #
+        </span>
+        <span
+          style={{
+            fontSize: 13,
+            color: active ? "var(--text)" : isUnread ? "#fff" : hovered ? "var(--text)" : "var(--text-muted)",
+            fontWeight: active || isUnread ? 600 : 400,
+            transition: "color 0.12s",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {channel.name}
+        </span>
+      </div>
+      {isUnread && !active && (
+        <div 
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: "var(--accent)",
+            flexShrink: 0,
+            boxShadow: "0 0 8px var(--accent-glow)"
+          }}
+        />
+      )}
     </button>
   );
 }
@@ -537,8 +556,12 @@ function ChannelView({
 }) {
   const messages = useQuery(api.messages.list, { channelId: channel._id });
   const sendMessage = useMutation(api.messages.send);
-  const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
-  const viewer = useQuery(api.myFunctions.listNumbers, { count: 1 })?.viewer ?? null;
+  const markRead = useMutation(api.readReceipts.markRead);
+  const readers = useQuery(api.readReceipts.channelReaders, { channelId: channel._id }) ?? [];
+  const userData = useQuery(api.myFunctions.listNumbers, { count: 1 });
+  const viewer = userData?.viewer ?? null;
+  const viewerId = userData?.viewerId ?? null;
+  
   const [input, setInput] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
@@ -546,8 +569,15 @@ function ChannelView({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: "auto" });
   }, [messages?.length]);
+
+  useEffect(() => {
+    if (messages && messages.length > 0) {
+      // Mark read when messages update
+      void markRead({ channelId: channel._id });
+    }
+  }, [messages, channel._id, markRead]);
 
   // Reset input when switching channels
   useEffect(() => {
@@ -592,6 +622,8 @@ function ChannelView({
       }
 
       await sendMessage({ channelId: channel._id, content, imageId });
+      // Self mark read after sending
+      void markRead({ channelId: channel._id });
     } catch (error) {
       console.error(error);
     } finally {
@@ -608,6 +640,24 @@ function ChannelView({
   }
 
   const canSend = (input.trim().length > 0 || imageFile !== null) && !sending;
+
+  // Compute read receipts mapping to exactly the latest message each user has seen
+  const readersByMessageId = new Map<string, string[]>();
+  if (messages && viewerId !== null) {
+    for (const reader of readers) {
+      // Find the absolute latest message sent by the CURRENT USER that this specific reader has seen.
+      // We loop backwards from the end to find the most recent one.
+      const seenMessage = [...messages].reverse().find(
+        (m) => m.userId === viewerId && reader.lastReadTime >= m._creationTime
+      );
+      if (seenMessage) {
+        if (!readersByMessageId.has(seenMessage._id)) {
+          readersByMessageId.set(seenMessage._id, []);
+        }
+        readersByMessageId.get(seenMessage._id)!.push(getHandle(reader.email || "unknown"));
+      }
+    }
+  }
 
   return (
     <>
@@ -658,14 +708,20 @@ function ChannelView({
         ) : messages.length === 0 ? (
           <ChannelEmpty name={channel.name} />
         ) : (
-          messages.map((msg, i) => (
-            <MessageItem
-              key={msg._id}
-              message={msg}
-              grouped={shouldGroup(messages[i - 1], msg)}
-              isOwn={viewer !== null && msg.authorEmail === viewer}
-            />
-          ))
+          messages.map((msg, i) => {
+            const isOwn = viewer !== null && msg.authorEmail === viewer;
+            const messageReaders = readersByMessageId.get(msg._id) || [];
+
+            return (
+              <MessageItem
+                key={msg._id}
+                message={msg}
+                grouped={shouldGroup(messages[i - 1], msg)}
+                isOwn={isOwn}
+                readBy={messageReaders}
+              />
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>
@@ -956,13 +1012,54 @@ function MessageItem({
   message,
   grouped,
   isOwn,
+  readBy = [],
 }: {
   message: MessageWithImage;
   grouped: boolean;
   isOwn: boolean;
+  readBy?: string[];
 }) {
   const [hovered, setHovered] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(message.content || "");
+  const updateMessage = useMutation(api.messages.update);
+  const removeMessage = useMutation(api.messages.remove);
+  const editInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (isEditing) {
+      editInputRef.current?.focus();
+      // Move cursor to end
+      editInputRef.current?.setSelectionRange(editContent.length, editContent.length);
+    }
+  }, [isEditing]);
+
+  async function handleUpdate() {
+    const trimmed = editContent.trim();
+    if (trimmed === message.content) {
+      setIsEditing(false);
+      return;
+    }
+    if (!trimmed && !message.imageId) return;
+    
+    try {
+      await updateMessage({ messageId: message._id, content: trimmed });
+      setIsEditing(false);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function handleDelete() {
+    if (confirm("Are you sure you want to delete this message?")) {
+      try {
+        await removeMessage({ messageId: message._id });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }
 
   return (
     <div
@@ -977,6 +1074,7 @@ function MessageItem({
         background: hovered ? "rgba(255,255,255,0.02)" : "transparent",
         transition: "background 0.1s",
         alignItems: "flex-end",
+        position: "relative",
       }}
     >
       {/* Avatar */}
@@ -1021,8 +1119,68 @@ function MessageItem({
         className="message-bubble-wrapper"
         style={{
           alignItems: isOwn ? "flex-end" : "flex-start",
+          flex: isEditing ? 1 : "initial",
+          position: "relative",
         }}
       >
+        {/* Edit/Delete Actions */}
+        {isOwn && hovered && !isEditing && (
+          <div
+            style={{
+              position: "absolute",
+              top: grouped ? -16 : -12,
+              [isOwn ? "right" : "left"]: 0,
+              display: "flex",
+              gap: 4,
+              background: "var(--surface-2)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: 6,
+              padding: 2,
+              zIndex: 10,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            }}
+          >
+            <button
+              onClick={() => setIsEditing(true)}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 4,
+                color: "var(--text-muted)",
+                display: "flex",
+                borderRadius: 4,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4L18.5 2.5z"></path>
+              </svg>
+            </button>
+            <button
+              onClick={handleDelete}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 4,
+                color: "var(--text-muted)",
+                display: "flex",
+                borderRadius: 4,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
+          </div>
+        )}
+
         {!grouped && (
           <div
             style={{
@@ -1048,7 +1206,7 @@ function MessageItem({
           </div>
         )}
         
-        {message.imageUrl && (
+        {message.imageUrl && !isEditing && (
           <>
             <img 
               src={message.imageUrl} 
@@ -1097,7 +1255,46 @@ function MessageItem({
           </>
         )}
 
-        {message.content && (
+        {isEditing ? (
+          <div style={{ width: "100%", marginTop: 4 }}>
+            <textarea
+              ref={editInputRef}
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleUpdate();
+                } else if (e.key === "Escape") {
+                  setIsEditing(false);
+                  setEditContent(message.content || "");
+                }
+              }}
+              style={{
+                width: "100%",
+                background: "var(--surface-2)",
+                border: "1px solid var(--accent)",
+                borderRadius: 8,
+                padding: "8px 12px",
+                color: "var(--text)",
+                fontSize: 14,
+                lineHeight: 1.55,
+                outline: "none",
+                resize: "none",
+                minHeight: 44,
+              }}
+            />
+            <div style={{ display: "flex", gap: 8, marginTop: 4, fontSize: 11 }}>
+              <span style={{ color: "var(--text-dim)" }}>
+                escape to <button onClick={() => { setIsEditing(false); setEditContent(message.content || ""); }} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, fontSize: "inherit" }}>cancel</button>
+              </span>
+              <span style={{ color: "var(--text-dim)" }}>•</span>
+              <span style={{ color: "var(--text-dim)" }}>
+                enter to <button onClick={handleUpdate} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, fontSize: "inherit" }}>save</button>
+              </span>
+            </div>
+          </div>
+        ) : message.content && (
           <div
             style={{
               background: isOwn ? "var(--accent)" : "var(--surface)",
@@ -1121,6 +1318,27 @@ function MessageItem({
             >
               {message.content}
             </p>
+          </div>
+        )}
+        
+        {isOwn && readBy.length > 0 && !isEditing && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              marginTop: 2,
+              color: "var(--text-dim)",
+              fontSize: 10,
+              opacity: hovered ? 1 : 0.6,
+              transition: "opacity 0.15s",
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <span>Seen by {readBy.join(", ")}</span>
           </div>
         )}
       </div>
