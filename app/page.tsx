@@ -1,5 +1,7 @@
 "use client";
 
+import { createPortal } from "react-dom";
+import imageCompression from "browser-image-compression";
 import EmojiPicker, { Theme } from "emoji-picker-react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -535,8 +537,10 @@ function ChannelView({
 }) {
   const messages = useQuery(api.messages.list, { channelId: channel._id });
   const sendMessage = useMutation(api.messages.send);
+  const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
   const viewer = useQuery(api.myFunctions.listNumbers, { count: 1 })?.viewer ?? null;
   const [input, setInput] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -548,19 +552,48 @@ function ChannelView({
   // Reset input when switching channels
   useEffect(() => {
     setInput("");
+    setImageFile(null);
   }, [channel._id]);
 
   async function handleSend() {
     const content = input.trim();
-    if (!content || sending) return;
+    if ((!content && !imageFile) || sending) return;
     setSending(true);
     setInput("");
+    
+    const currentImageFile = imageFile;
+    setImageFile(null);
+
     // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
     try {
-      await sendMessage({ channelId: channel._id, content });
+      let imageId = undefined;
+      
+      if (currentImageFile) {
+        const compressedFile = await imageCompression(currentImageFile, {
+          maxSizeMB: 1,
+          maxWidthOrHeight: 1920,
+          useWebWorker: true,
+        });
+
+        const postUrl = await generateUploadUrl();
+        const result = await fetch(postUrl, {
+          method: "POST",
+          headers: { "Content-Type": compressedFile.type },
+          body: compressedFile,
+        });
+        
+        if (!result.ok) throw new Error("Failed to upload image");
+        
+        const { storageId } = await result.json();
+        imageId = storageId;
+      }
+
+      await sendMessage({ channelId: channel._id, content, imageId });
+    } catch (error) {
+      console.error(error);
     } finally {
       setSending(false);
       textareaRef.current?.focus();
@@ -574,7 +607,7 @@ function ChannelView({
     }
   }
 
-  const canSend = input.trim().length > 0 && !sending;
+  const canSend = (input.trim().length > 0 || imageFile !== null) && !sending;
 
   return (
     <>
@@ -642,6 +675,8 @@ function ChannelView({
         <MessageInput
           input={input}
           setInput={setInput}
+          imageFile={imageFile}
+          setImageFile={setImageFile}
           canSend={canSend}
           onSend={() => void handleSend()}
           onKeyDown={handleKeyDown}
@@ -658,6 +693,8 @@ function ChannelView({
 function MessageInput({
   input,
   setInput,
+  imageFile,
+  setImageFile,
   canSend,
   onSend,
   onKeyDown,
@@ -666,6 +703,8 @@ function MessageInput({
 }: {
   input: string;
   setInput: (v: string) => void;
+  imageFile: File | null;
+  setImageFile: (f: File | null) => void;
   canSend: boolean;
   onSend: () => void;
   onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
@@ -675,12 +714,22 @@ function MessageInput({
   const [focused, setFocused] = useState(false);
   const [btnHovered, setBtnHovered] = useState(false);
   const [emojiHovered, setEmojiHovered] = useState(false);
+  const [imageHovered, setImageHovered] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleEmojiClick = (emojiObj: { emoji: string }) => {
     setInput(input + emojiObj.emoji);
     textareaRef.current?.focus();
   };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setImageFile(e.target.files[0]);
+    }
+  };
+
+  const removeImage = () => setImageFile(null);
 
   return (
     <>
@@ -702,13 +751,73 @@ function MessageInput({
             border: `1px solid ${focused ? "rgba(122,110,245,0.4)" : "var(--border-strong)"}`,
             borderRadius: 10,
             display: "flex",
-            alignItems: "flex-end",
-            gap: 8,
-            padding: "10px 10px 10px 14px",
+            flexDirection: "column",
             transition: "border-color 0.2s",
           }}
         >
-          <textarea
+          {imageFile && (
+            <div style={{ padding: "10px 10px 0 14px", position: "relative", width: "max-content" }}>
+              <img 
+                src={URL.createObjectURL(imageFile)} 
+                alt="Preview" 
+                style={{ height: 60, borderRadius: 6, objectFit: "cover" }} 
+              />
+              <button 
+                onClick={removeImage}
+                style={{ 
+                  position: "absolute", 
+                  top: 2, 
+                  right: -8, 
+                  background: "var(--surface-2)", 
+                  border: "1px solid var(--border-strong)", 
+                  borderRadius: "50%", 
+                  width: 20, 
+                  height: 20, 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  color: "var(--text)"
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+          )}
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, padding: "10px 10px 10px 14px" }}>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setImageHovered(true)}
+              onMouseLeave={() => setImageHovered(false)}
+              title="Add image"
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "0 0 6px 0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: imageHovered ? "var(--accent)" : "var(--text-dim)",
+                transition: "color 0.15s",
+                flexShrink: 0,
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+            </button>
+            <input 
+              type="file" 
+              accept="image/*" 
+              ref={fileInputRef} 
+              style={{ display: "none" }} 
+              onChange={handleImageChange} 
+            />
+            <textarea
           ref={textareaRef}
           value={input}
           onChange={(e) => {
@@ -726,6 +835,20 @@ function MessageInput({
             e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
           }}
           onKeyDown={onKeyDown}
+          onPaste={(e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+              if (item.type.startsWith("image/")) {
+                const file = item.getAsFile();
+                if (file) {
+                  setImageFile(file);
+                  e.preventDefault();
+                  break;
+                }
+              }
+            }
+          }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder={placeholder}
@@ -810,6 +933,7 @@ function MessageInput({
         </button>
       </div>
       </div>
+      </div>
       <p
         style={{
           fontSize: 11,
@@ -826,16 +950,19 @@ function MessageInput({
 
 // ─── Message Item ─────────────────────────────────────────────────────────────
 
+type MessageWithImage = Doc<"messages"> & { imageUrl?: string | null };
+
 function MessageItem({
   message,
   grouped,
   isOwn,
 }: {
-  message: Doc<"messages">;
+  message: MessageWithImage;
   grouped: boolean;
   isOwn: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
 
   return (
     <div
@@ -920,30 +1047,82 @@ function MessageItem({
             </span>
           </div>
         )}
-        <div
-          style={{
-            background: isOwn ? "var(--accent)" : "var(--surface)",
-            border: isOwn ? "none" : "1px solid var(--border-strong)",
-            borderRadius: isOwn
-              ? grouped ? "14px 14px 4px 14px" : "14px 4px 14px 14px"
-              : grouped ? "14px 14px 14px 4px" : "4px 14px 14px 14px",
-            padding: "8px 12px",
-            boxShadow: isOwn ? "0 2px 8px var(--accent-glow)" : "none",
-          }}
-        >
-          <p
+        
+        {message.imageUrl && (
+          <>
+            <img 
+              src={message.imageUrl} 
+              alt="Attachment" 
+              onClick={() => setIsImageModalOpen(true)}
+              style={{ 
+                maxWidth: 280, 
+                maxHeight: 320, 
+                borderRadius: 12,
+                objectFit: "cover",
+                cursor: "pointer",
+                border: "1px solid var(--border-strong)",
+                marginBottom: message.content ? 4 : 0,
+              }} 
+            />
+            {isImageModalOpen && typeof document !== "undefined" && createPortal(
+              <div 
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  backgroundColor: "rgba(0,0,0,0.85)",
+                  zIndex: 100,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 24,
+                  backdropFilter: "blur(5px)",
+                  cursor: "zoom-out",
+                }}
+                onClick={() => setIsImageModalOpen(false)}
+              >
+                <img 
+                  src={message.imageUrl} 
+                  alt="Attachment expanded" 
+                  style={{ 
+                    maxWidth: "100%", 
+                    maxHeight: "100%", 
+                    objectFit: "contain",
+                    borderRadius: 8,
+                    boxShadow: "0 10px 40px rgba(0,0,0,0.5)",
+                  }} 
+                />
+              </div>,
+              document.body
+            )}
+          </>
+        )}
+
+        {message.content && (
+          <div
             style={{
-              margin: 0,
-              fontSize: 14,
-              color: isOwn ? "#fff" : "var(--text)",
-              lineHeight: 1.55,
-              wordBreak: "break-word",
-              whiteSpace: "pre-wrap",
+              background: isOwn ? "var(--accent)" : "var(--surface)",
+              border: isOwn ? "none" : "1px solid var(--border-strong)",
+              borderRadius: isOwn
+                ? grouped ? "14px 14px 4px 14px" : "14px 4px 14px 14px"
+                : grouped ? "14px 14px 14px 4px" : "4px 14px 14px 4px",
+              padding: "8px 12px",
+              boxShadow: isOwn ? "0 2px 8px var(--accent-glow)" : "none",
             }}
           >
-            {message.content}
-          </p>
-        </div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 14,
+                color: isOwn ? "#fff" : "var(--text)",
+                lineHeight: 1.55,
+                wordBreak: "break-word",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {message.content}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

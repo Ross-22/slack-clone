@@ -12,6 +12,7 @@ export default defineSchema({
     channelId: v.id("channels"),
     userId: v.id("users"),
     authorEmail: v.string(),
-    content: v.string(),
+    content: v.optional(v.string()),
+    imageId: v.optional(v.id("_storage")),
   }).index("by_channel", ["channelId"]),
 });

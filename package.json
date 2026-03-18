@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.91",
+    "browser-image-compression": "^2.0.2",
     "convex": "^1.33.1",
     "emoji-picker-react": "^4.18.0",
     "next": "16.1.6",
