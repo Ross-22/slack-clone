@@ -19,6 +19,12 @@ export const list = query({
         if (msg.imageId) {
           imageUrl = await ctx.storage.getUrl(msg.imageId);
         }
+
+        const author = await ctx.db.get(msg.userId);
+        let authorImageUrl = null;
+        if (author?.image) {
+          authorImageUrl = await ctx.storage.getUrl(author.image);
+        }
         
         let replyTo = null;
         if (msg.replyToId) {
@@ -36,7 +42,7 @@ export const list = query({
           .withIndex("by_message", (q) => q.eq("messageId", msg._id))
           .collect();
         
-        return { ...msg, imageUrl, replyTo, reactions };
+        return { ...msg, imageUrl, authorImageUrl, authorName: author?.name, replyTo, reactions };
       })
     );
   },

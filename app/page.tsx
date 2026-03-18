@@ -8,6 +8,7 @@ import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
+import { ProfileModal } from "@/components/ProfileModal";
 import {
   useState,
   useEffect,
@@ -121,6 +122,7 @@ function ChatApp() {
   const [selectedChannelId, setSelectedChannelId] =
     useState<Id<"channels"> | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const channels = useQuery(api.channels.list);
   const seedChannels = useMutation(api.channels.seed);
@@ -157,6 +159,7 @@ function ChatApp() {
           setIsSidebarOpen(false);
         }}
         isOpen={isSidebarOpen}
+        onProfileClick={() => setShowProfileModal(true)}
       />
       
       <div 
@@ -174,6 +177,10 @@ function ChatApp() {
           <EmptyState onMenuClick={() => setIsSidebarOpen(true)} />
         )}
       </main>
+
+      {showProfileModal && (
+        <ProfileModal onClose={() => setShowProfileModal(false)} />
+      )}
     </div>
   );
 }
@@ -185,11 +192,13 @@ function Sidebar({
   selectedChannelId,
   onSelectChannel,
   isOpen,
+  onProfileClick,
 }: {
   channels: Doc<"channels">[];
   selectedChannelId: Id<"channels"> | null;
   onSelectChannel: (id: Id<"channels">) => void;
   isOpen: boolean;
+  onProfileClick: () => void;
 }) {
   const [showAddChannel, setShowAddChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState("");
@@ -334,6 +343,7 @@ function Sidebar({
         onSignOut={() =>
           void signOut().then(() => router.push("/signin"))
         }
+        onProfileClick={onProfileClick}
       />
     </aside>
   );
@@ -458,9 +468,18 @@ function ChannelItem({
 
 // ─── User Footer ─────────────────────────────────────────────────────────────
 
-function UserFooter({ onSignOut }: { onSignOut: () => void }) {
-  const data = useQuery(api.myFunctions.listNumbers, { count: 1 });
-  const email = data?.viewer ?? "";
+function UserFooter({ 
+  onSignOut,
+  onProfileClick 
+}: { 
+  onSignOut: () => void;
+  onProfileClick: () => void;
+}) {
+  const user = useQuery(api.users.me);
+
+  if (!user) return null;
+  const email = user.email || "";
+  const name = user.name || getHandle(email);
 
   return (
     <div
@@ -473,11 +492,15 @@ function UserFooter({ onSignOut }: { onSignOut: () => void }) {
       }}
     >
       <div
+        onClick={onProfileClick}
         style={{
           width: 28,
           height: 28,
           borderRadius: "50%",
-          background: email ? stringToColor(email) : "var(--surface-2)",
+          backgroundColor: user.imageUrl ? "transparent" : stringToColor(email),
+          backgroundImage: user.imageUrl ? `url(${user.imageUrl})` : "none",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -486,9 +509,10 @@ function UserFooter({ onSignOut }: { onSignOut: () => void }) {
           color: "#fff",
           flexShrink: 0,
           position: "relative",
+          cursor: "pointer",
         }}
       >
-        {email ? getInitial(email) : "·"}
+        {!user.imageUrl && getInitial(email)}
         <span
           style={{
             position: "absolute",
@@ -503,6 +527,7 @@ function UserFooter({ onSignOut }: { onSignOut: () => void }) {
         />
       </div>
       <span
+        onClick={onProfileClick}
         style={{
           flex: 1,
           fontSize: 12,
@@ -510,12 +535,56 @@ function UserFooter({ onSignOut }: { onSignOut: () => void }) {
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
+          cursor: "pointer",
         }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
+        onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
       >
-        {email ? getHandle(email) : "…"}
+        {name}
       </span>
-      <SignOutIcon onClick={onSignOut} />
+      <div style={{ display: "flex", gap: 4 }}>
+        <ProfileButton onClick={onProfileClick} />
+        <SignOutIcon onClick={onSignOut} />
+      </div>
     </div>
+  );
+}
+
+function ProfileButton({ onClick }: { onClick: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      title="Profile settings"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        color: hovered ? "var(--text-muted)" : "var(--text-dim)",
+        padding: 4,
+        borderRadius: 5,
+        display: "flex",
+        alignItems: "center",
+        transition: "color 0.15s",
+        flexShrink: 0,
+      }}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
+      </svg>
+    </button>
   );
 }
 
@@ -1081,6 +1150,8 @@ function MessageInput({
 
 type MessageWithImage = Doc<"messages"> & { 
   imageUrl?: string | null; 
+  authorImageUrl?: string | null;
+  authorName?: string | null;
   replyTo?: { content?: string; authorEmail: string } | null;
   reactions?: Doc<"reactions">[];
 };
@@ -1482,7 +1553,10 @@ function MessageItem({
                 width: 32,
                 height: 32,
                 borderRadius: 8,
-                background: isOwn ? "var(--accent)" : stringToColor(message.authorEmail),
+                backgroundColor: message.authorImageUrl ? "transparent" : (isOwn ? "var(--accent)" : stringToColor(message.authorEmail)),
+                backgroundImage: message.authorImageUrl ? `url(${message.authorImageUrl})` : "none",
+                backgroundSize: "cover",
+                backgroundPosition: "center",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1491,7 +1565,7 @@ function MessageItem({
                 color: "#fff",
               }}
             >
-              {getInitial(message.authorEmail)}
+              {!message.authorImageUrl && getInitial(message.authorEmail)}
             </div>
           ) : (
             <span
@@ -1718,7 +1792,7 @@ function MessageItem({
                 letterSpacing: "-0.01em",
               }}
             >
-              {isOwn ? "You" : getHandle(message.authorEmail)}
+              {isOwn ? "You" : (message.authorName || getHandle(message.authorEmail))}
             </span>
             <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
               {formatTime(message._creationTime)}

@@ -15,6 +15,7 @@ import type * as messages from "../messages.js";
 import type * as myFunctions from "../myFunctions.js";
 import type * as reactions from "../reactions.js";
 import type * as readReceipts from "../readReceipts.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   myFunctions: typeof myFunctions;
   reactions: typeof reactions;
   readReceipts: typeof readReceipts;
+  users: typeof users;
 }>;
 
 /**
