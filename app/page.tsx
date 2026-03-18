@@ -678,7 +678,7 @@ function MessageInput({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const handleEmojiClick = (emojiObj: { emoji: string }) => {
-    setInput((prev) => prev + emojiObj.emoji);
+    setInput(input + emojiObj.emoji);
     textareaRef.current?.focus();
   };
 
