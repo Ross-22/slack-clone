@@ -104,6 +104,7 @@ export default function Home() {
 function ChatApp() {
   const [selectedChannelId, setSelectedChannelId] =
     useState<Id<"channels"> | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const channels = useQuery(api.channels.list);
   const seedChannels = useMutation(api.channels.seed);
@@ -129,26 +130,32 @@ function ChatApp() {
         height: "100vh",
         overflow: "hidden",
         background: "var(--bg)",
+        position: "relative",
       }}
     >
       <Sidebar
         channels={channels ?? []}
         selectedChannelId={selectedChannelId}
-        onSelectChannel={setSelectedChannelId}
-      />
-      <main
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          borderLeft: "1px solid var(--border)",
+        onSelectChannel={(id) => {
+          setSelectedChannelId(id);
+          setIsSidebarOpen(false);
         }}
-      >
+        isOpen={isSidebarOpen}
+      />
+      
+      <div 
+        className={`mobile-overlay ${isSidebarOpen ? "open" : ""}`}
+        onClick={() => setIsSidebarOpen(false)}
+      />
+
+      <main className="main-content">
         {selectedChannelId && selectedChannel ? (
-          <ChannelView channel={selectedChannel} />
+          <ChannelView 
+            channel={selectedChannel} 
+            onMenuClick={() => setIsSidebarOpen(true)}
+          />
         ) : (
-          <EmptyState />
+          <EmptyState onMenuClick={() => setIsSidebarOpen(true)} />
         )}
       </main>
     </div>
@@ -161,10 +168,12 @@ function Sidebar({
   channels,
   selectedChannelId,
   onSelectChannel,
+  isOpen,
 }: {
   channels: Doc<"channels">[];
   selectedChannelId: Id<"channels"> | null;
   onSelectChannel: (id: Id<"channels">) => void;
+  isOpen: boolean;
 }) {
   const [showAddChannel, setShowAddChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState("");
@@ -187,16 +196,7 @@ function Sidebar({
   }
 
   return (
-    <aside
-      style={{
-        width: 240,
-        flexShrink: 0,
-        background: "var(--sidebar-bg)",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}
-    >
+    <aside className={`sidebar ${isOpen ? "open" : ""}`}>
       {/* Workspace header */}
       <div
         style={{
@@ -525,7 +525,13 @@ function SignOutIcon({ onClick }: { onClick: () => void }) {
 
 // ─── Channel View ─────────────────────────────────────────────────────────────
 
-function ChannelView({ channel }: { channel: Doc<"channels"> }) {
+function ChannelView({ 
+  channel,
+  onMenuClick 
+}: { 
+  channel: Doc<"channels">;
+  onMenuClick: () => void;
+}) {
   const messages = useQuery(api.messages.list, { channelId: channel._id });
   const sendMessage = useMutation(api.messages.send);
   const viewer = useQuery(api.myFunctions.listNumbers, { count: 1 })?.viewer ?? null;
@@ -572,16 +578,14 @@ function ChannelView({ channel }: { channel: Doc<"channels"> }) {
   return (
     <>
       {/* Header */}
-      <div
-        style={{
-          padding: "13px 24px",
-          borderBottom: "1px solid var(--border)",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          flexShrink: 0,
-        }}
-      >
+      <div className="channel-header">
+        <button className="mobile-menu-btn" onClick={onMenuClick}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
         <span style={{ fontSize: 16, color: "var(--accent)", fontWeight: 300 }}>
           #
         </span>
@@ -830,12 +834,9 @@ function MessageItem({
 
       {/* Bubble */}
       <div
+        className="message-bubble-wrapper"
         style={{
-          maxWidth: "65%",
-          display: "flex",
-          flexDirection: "column",
           alignItems: isOwn ? "flex-end" : "flex-start",
-          gap: 3,
         }}
       >
         {!grouped && (
@@ -978,19 +979,30 @@ function MessagesSkeleton() {
   );
 }
 
-function EmptyState() {
+function EmptyState({ onMenuClick }: { onMenuClick?: () => void }) {
   return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "var(--text-muted)",
-        fontSize: 14,
-      }}
-    >
-      Select a channel to start chatting
+    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div className="channel-header">
+        <button className="mobile-menu-btn" onClick={onMenuClick}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--text-muted)",
+          fontSize: 14,
+        }}
+      >
+        Select a channel to start chatting
+      </div>
     </div>
   );
 }
