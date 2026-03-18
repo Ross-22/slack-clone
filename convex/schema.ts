@@ -23,4 +23,15 @@ export default defineSchema({
   })
     .index("by_user_and_channel", ["userId", "channelId"])
     .index("by_channel", ["channelId"]),
+  reactions: defineTable({
+    messageId: v.id("messages"),
+    userId: v.id("users"),
+    emoji: v.string(),
+  })
+    .index("by_message", ["messageId"])
+    .index("by_user_and_message", ["userId", "messageId"]),
+  userSettings: defineTable({
+    userId: v.id("users"),
+    hotbar: v.array(v.string()),
+  }).index("by_user", ["userId"]),
 });

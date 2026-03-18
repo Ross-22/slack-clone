@@ -8,11 +8,13 @@ export const list = query({
     const messages = await ctx.db
       .query("messages")
       .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
-      .order("asc")
+      .order("desc")
       .take(200);
 
+    const chronologicalMessages = [...messages].reverse();
+
     return Promise.all(
-      messages.map(async (msg) => {
+      chronologicalMessages.map(async (msg) => {
         let imageUrl = null;
         if (msg.imageId) {
           imageUrl = await ctx.storage.getUrl(msg.imageId);
@@ -29,7 +31,12 @@ export const list = query({
           }
         }
         
-        return { ...msg, imageUrl, replyTo };
+        const reactions = await ctx.db
+          .query("reactions")
+          .withIndex("by_message", (q) => q.eq("messageId", msg._id))
+          .collect();
+        
+        return { ...msg, imageUrl, replyTo, reactions };
       })
     );
   },

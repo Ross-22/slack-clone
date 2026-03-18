@@ -13,6 +13,7 @@ import type * as channels from "../channels.js";
 import type * as http from "../http.js";
 import type * as messages from "../messages.js";
 import type * as myFunctions from "../myFunctions.js";
+import type * as reactions from "../reactions.js";
 import type * as readReceipts from "../readReceipts.js";
 
 import type {
@@ -27,6 +28,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   messages: typeof messages;
   myFunctions: typeof myFunctions;
+  reactions: typeof reactions;
   readReceipts: typeof readReceipts;
 }>;
 

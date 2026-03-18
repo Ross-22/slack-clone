@@ -54,6 +54,19 @@ function stringToColor(str: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  return isMobile;
+}
+
 // ─── Loading Screen ──────────────────────────────────────────────────────────
 
 function LoadingScreen() {
@@ -572,7 +585,7 @@ function ChannelView({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "auto" });
-  }, [messages?.length]);
+  }, [messages]);
 
   useEffect(() => {
     if (messages && messages.length > 0) {
@@ -1069,7 +1082,201 @@ function MessageInput({
 type MessageWithImage = Doc<"messages"> & { 
   imageUrl?: string | null; 
   replyTo?: { content?: string; authorEmail: string } | null;
+  reactions?: Doc<"reactions">[];
 };
+
+function EmojiHotbar({
+  onSelect,
+  onCustomOpen,
+  onHotbarChange,
+  currentHotbar,
+  onEditingChange,
+}: {
+  onSelect: (emoji: string) => void;
+  onCustomOpen: () => void;
+  onHotbarChange: (newHotbar: string[]) => void;
+  currentHotbar: string[];
+  onEditingChange?: (isEditing: boolean) => void;
+}) {
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [isEditingMode, setIsEditingMode] = useState(false);
+
+  useEffect(() => {
+    onEditingChange?.(editingIndex !== null || isEditingMode);
+  }, [editingIndex, isEditingMode, onEditingChange]);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 4,
+        background: "var(--surface-2)",
+        border: `1px solid ${isEditingMode ? "var(--accent)" : "var(--border-strong)"}`,
+        borderRadius: 20,
+        padding: "4px 8px",
+        boxShadow: isEditingMode ? "0 0 15px var(--accent-glow)" : "0 4px 12px rgba(0,0,0,0.3)",
+        animation: "fadeSlideUp 0.15s ease-out",
+        alignItems: "center",
+        transition: "all 0.2s",
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        onClick={() => setIsEditingMode(!isEditingMode)}
+        style={{
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: "2px 4px",
+          color: isEditingMode ? "var(--accent)" : "var(--text-muted)",
+          display: "flex",
+          borderRadius: 6,
+          transition: "color 0.2s",
+        }}
+        className="hover-scale"
+        title={isEditingMode ? "Done editing" : "Edit hotbar"}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {isEditingMode ? (
+            <polyline points="20 6 9 17 4 12"></polyline>
+          ) : (
+            <>
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4L18.5 2.5z"></path>
+            </>
+          )}
+        </svg>
+      </button>
+
+      <div style={{ width: 1, height: 16, background: "var(--border-strong)", margin: "0 2px" }} />
+
+      {currentHotbar.map((emoji, i) => (
+        <button
+          key={i}
+          onClick={() => isEditingMode ? setEditingIndex(i) : onSelect(emoji)}
+          style={{
+            background: "none",
+            border: isEditingMode ? "1px dashed var(--accent-dim)" : "none",
+            fontSize: 18,
+            cursor: "pointer",
+            padding: "2px 4px",
+            borderRadius: 6,
+            transition: "transform 0.1s",
+            animationName: isEditingMode ? "wiggle" : "none",
+            animationDuration: "0.3s",
+            animationIterationCount: "infinite",
+            animationTimingFunction: "ease-in-out",
+            animationDelay: `${i * 0.05}s`,
+          }}
+          className={!isEditingMode ? "hover-scale" : ""}
+        >
+          {emoji}
+        </button>
+      ))}
+
+      {!isEditingMode && (
+        <>
+          <div style={{ width: 1, height: 16, background: "var(--border-strong)", margin: "0 2px" }} />
+          <button
+            onClick={onCustomOpen}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "2px 4px",
+              color: "var(--text-muted)",
+              display: "flex",
+              borderRadius: 6,
+            }}
+            className="hover-scale"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="16"></line>
+              <line x1="8" y1="12" x2="16" y2="12"></line>
+            </svg>
+          </button>
+        </>
+      )}
+
+      {editingIndex !== null && typeof document !== "undefined" && createPortal(
+        <div style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)" }}>
+          <div onClick={() => setEditingIndex(null)} style={{ position: "absolute", inset: 0 }} />
+          <div style={{ position: "relative", zIndex: 1001 }}>
+            <EmojiPicker 
+              theme={Theme.DARK} 
+              onEmojiClick={(emojiObj) => {
+                const next = [...currentHotbar];
+                next[editingIndex] = emojiObj.emoji;
+                onHotbarChange(next);
+                setEditingIndex(null);
+              }}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+function Reactions({
+  reactions,
+  onToggle,
+  viewerId,
+  isOwn,
+}: {
+  reactions: Doc<"reactions">[];
+  onToggle: (emoji: string) => void;
+  viewerId: string | null;
+  isOwn: boolean;
+}) {
+  const groups = new Map<string, string[]>();
+  reactions.forEach((r) => {
+    if (!groups.has(r.emoji)) groups.set(r.emoji, []);
+    groups.get(r.emoji)!.push(r.userId);
+  });
+
+  if (reactions.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 4,
+        marginTop: 4,
+        justifyContent: isOwn ? "flex-end" : "flex-start",
+      }}
+    >
+      {Array.from(groups.entries()).map(([emoji, userIds]) => {
+        const hasReacted = viewerId && userIds.includes(viewerId as any);
+        return (
+          <button
+            key={emoji}
+            onClick={() => onToggle(emoji)}
+            style={{
+              background: hasReacted ? "var(--accent-dim)" : "var(--surface-2)",
+              border: `1px solid ${hasReacted ? "var(--accent)" : "var(--border-strong)"}`,
+              borderRadius: 12,
+              padding: "2px 6px",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              cursor: "pointer",
+              transition: "all 0.15s",
+            }}
+          >
+            <span style={{ fontSize: 13 }}>{emoji}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: hasReacted ? "var(--text)" : "var(--text-muted)" }}>
+              {userIds.length}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function MessageItem({
   message,
@@ -1089,10 +1296,24 @@ function MessageItem({
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content || "");
   const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const [showHotbar, setShowHotbar] = useState(false);
+  const [hotbarPosition, setHotbarPosition] = useState<"above" | "below">("above");
+  const [isHotbarEditing, setIsHotbarEditing] = useState(false);
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
   const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const isMobile = useIsMobile();
+  const bubbleWrapperRef = useRef<HTMLDivElement>(null);
 
   const updateMessage = useMutation(api.messages.update);
   const removeMessage = useMutation(api.messages.remove);
+  const toggleReaction = useMutation(api.reactions.toggle);
+  const updateHotbar = useMutation(api.reactions.updateHotbar);
+  const hotbar = useQuery(api.reactions.getHotbar) ?? ["👍", "❤️", "😂", "😮", "😢", "🔥"];
+  const userData = useQuery(api.myFunctions.listNumbers, { count: 1 });
+  const viewerId = userData?.viewerId ?? null;
   const editInputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -1129,217 +1350,355 @@ function MessageItem({
     }
   }
 
-  // Swipe-to-reply logic
+  // Swipe-to-reply + Long press logic
   function onTouchStart(e: React.TouchEvent) {
     touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    setIsSwiping(true);
+
+    if (isMobile) {
+      longPressTimer.current = setTimeout(() => {
+        if (bubbleWrapperRef.current) {
+          const rect = bubbleWrapperRef.current.getBoundingClientRect();
+          const centerY = rect.top + rect.height / 2;
+          setHotbarPosition(centerY > window.innerHeight / 2 ? "above" : "below");
+        }
+        setShowHotbar(true);
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+      }, 500);
+    }
   }
 
   function onTouchMove(e: React.TouchEvent) {
+    const x = e.touches[0].clientX;
+    const y = e.touches[0].clientY;
+
+    if (touchStartX.current !== null && touchStartY.current !== null) {
+      const dx = Math.abs(x - touchStartX.current);
+      const dy = Math.abs(y - touchStartY.current);
+      if (dx > 10 || dy > 10) {
+        if (longPressTimer.current) {
+          clearTimeout(longPressTimer.current);
+          longPressTimer.current = null;
+        }
+      }
+    }
+
     if (touchStartX.current === null) return;
-    const diff = e.touches[0].clientX - touchStartX.current;
-    if (diff > 0) { // Only swipe right
-      setSwipeOffset(Math.min(diff, 60));
+    const diff = x - touchStartX.current;
+    
+    // Allow swiping right for others' messages, and left for own messages
+    if ((!isOwn && diff > 0) || (isOwn && diff < 0)) {
+      const absDiff = Math.abs(diff);
+      const resistance = Math.pow(absDiff, 0.8);
+      const offset = Math.min(resistance, 100);
+      setSwipeOffset(diff > 0 ? offset : -offset);
     }
   }
 
   function onTouchEnd() {
-    if (swipeOffset >= 50) {
+    setIsSwiping(false);
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    if (Math.abs(swipeOffset) >= 45) {
       onReply?.();
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        navigator.vibrate(30);
+      }
     }
     setSwipeOffset(0);
     touchStartX.current = null;
+    touchStartY.current = null;
   }
+
+  const handleDoubleClick = (e: React.MouseEvent | React.TouchEvent) => {
+    if (isEditing || !hotbar[0]) return;
+    // Prevent default to avoid zoom on mobile if possible, 
+    // though onDoubleClick is a desktop event.
+    void toggleReaction({ messageId: message._id, emoji: hotbar[0] });
+  };
 
   return (
     <div
       className="msg-enter"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={() => !isMobile && setHovered(true)}
+      onMouseLeave={() => {
+        if (!showHotbar && !showCustomPicker && !isHotbarEditing) {
+          setHovered(false);
+        }
+      }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
+      onDoubleClick={handleDoubleClick}
       style={{
-        display: "flex",
-        flexDirection: isOwn ? "row-reverse" : "row",
-        gap: 10,
         padding: grouped ? "2px 16px" : "10px 16px 2px",
         background: hovered ? "rgba(255,255,255,0.02)" : "transparent",
         transition: "background 0.1s",
-        alignItems: "flex-end",
         position: "relative",
-        transform: `translateX(${swipeOffset}px)`,
+        zIndex: (showHotbar || showCustomPicker || isHotbarEditing) ? 100 : 1,
+        overflow: "visible",
       }}
     >
-      {/* Swipe Reply Icon Indicator */}
-      {swipeOffset > 10 && (
-        <div style={{
-          position: "absolute",
-          left: -40,
-          top: "50%",
-          transform: "translateY(-50%)",
-          opacity: Math.min(swipeOffset / 50, 1),
-          color: "var(--accent)",
-        }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 17 4 12 9 7"></polyline>
-            <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
-          </svg>
-        </div>
-      )}
-
-      {/* Avatar */}
-      <div style={{ width: 32, flexShrink: 0 }}>
-        {!grouped ? (
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: isOwn ? "var(--accent)" : stringToColor(message.authorEmail),
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#fff",
-            }}
-          >
-            {getInitial(message.authorEmail)}
-          </div>
-        ) : (
-          <span
-            style={{
-              fontSize: 10,
-              color: "var(--text-dim)",
-              display: "block",
-              textAlign: isOwn ? "left" : "right",
-              paddingBottom: 4,
-              lineHeight: 1,
-              opacity: hovered ? 1 : 0,
-              transition: "opacity 0.1s",
-            }}
-          >
-            {formatTime(message._creationTime)}
-          </span>
-        )}
-      </div>
-
-      {/* Bubble */}
       <div
-        className="message-bubble-wrapper"
         style={{
-          alignItems: isOwn ? "flex-end" : "flex-start",
-          flex: isEditing ? 1 : "initial",
-          position: "relative",
-          maxWidth: "80%",
+          display: "flex",
+          flexDirection: isOwn ? "row-reverse" : "row",
+          gap: 10,
+          alignItems: "flex-end",
+          width: "100%",
+          transition: isSwiping ? "none" : "transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+          transform: `translate3d(${swipeOffset}px, 0, 0)`,
+          willChange: "transform",
         }}
       >
-        {/* Reply/Edit/Delete Actions */}
-        {hovered && !isEditing && (
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              [isOwn ? "right" : "left"]: "calc(100% + 4px)",
-              display: "flex",
-              flexDirection: isOwn ? "row" : "row-reverse",
-              gap: 4,
-              background: "var(--surface-2)",
-              border: "1px solid var(--border-strong)",
-              borderRadius: 6,
-              padding: 2,
-              zIndex: 10,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-            }}
-          >
-            {!isOwn && (
-              <button
-                onClick={onReply}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 4,
-                  color: "var(--text-muted)",
-                  display: "flex",
-                  borderRadius: 4,
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
-                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="9 17 4 12 9 7"></polyline>
-                  <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
-                </svg>
-              </button>
-            )}
-            {isOwn && (
-              <>
-                <button
-                  onClick={() => setIsEditing(true)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 4,
-                    color: "var(--text-muted)",
-                    display: "flex",
-                    borderRadius: 4,
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4L18.5 2.5z"></path>
-                  </svg>
-                </button>
-                <button
-                  onClick={handleDelete}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 4,
-                    color: "var(--text-muted)",
-                    display: "flex",
-                    borderRadius: 4,
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                  </svg>
-                </button>
-              </>
-            )}
+        {/* Swipe Reply Icon Indicator */}
+        {Math.abs(swipeOffset) > 10 && (
+          <div style={{
+            position: "absolute",
+            [swipeOffset > 0 ? "left" : "right"]: -35,
+            top: "50%",
+            transform: "translateY(-50%)",
+            opacity: Math.min(Math.abs(swipeOffset) / 50, 1),
+            color: "var(--accent)",
+            transition: "opacity 0.1s",
+          }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: swipeOffset > 0 ? "scaleX(1)" : "scaleX(-1)" }}>
+              <polyline points="9 17 4 12 9 7"></polyline>
+              <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+            </svg>
           </div>
         )}
 
-        {/* Reply Preview */}
-        {message.replyTo && (
-          <div style={{
-            background: "rgba(255,255,255,0.05)",
-            borderLeft: "2px solid var(--accent)",
-            padding: "4px 8px",
-            borderRadius: "4px 4px 0 0",
-            fontSize: 12,
-            marginBottom: -4,
-            width: "100%",
-            color: "var(--text-muted)",
-            opacity: 0.8,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}>
-            <span style={{ fontWeight: 600, color: "var(--accent-dim)" }}>
-              {getHandle(message.replyTo.authorEmail)}
+        {/* Avatar */}
+        <div style={{ width: 32, flexShrink: 0 }}>
+          {!grouped ? (
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: isOwn ? "var(--accent)" : stringToColor(message.authorEmail),
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#fff",
+              }}
+            >
+              {getInitial(message.authorEmail)}
+            </div>
+          ) : (
+            <span
+              style={{
+                fontSize: 10,
+                color: "var(--text-dim)",
+                display: "block",
+                textAlign: isOwn ? "left" : "right",
+                paddingBottom: 4,
+                lineHeight: 1,
+                opacity: hovered ? 1 : 0,
+                transition: "opacity 0.1s",
+              }}
+            >
+              {formatTime(message._creationTime)}
             </span>
-            {": "}
-            {message.replyTo.content || "Image"}
-          </div>
+          )}
+        </div>
+
+        {/* Bubble */}
+        <div
+          className="message-bubble-wrapper"
+          ref={bubbleWrapperRef}
+          style={{
+            alignItems: isOwn ? "flex-end" : "flex-start",
+            flex: isEditing ? 1 : "initial",
+            position: "relative",
+            maxWidth: "80%",
+          }}
+        >
+          {/* Mobile-only hotbar with backdrop */}
+          {showHotbar && isMobile && (
+            <>
+              <div 
+                style={{ position: "fixed", inset: 0, zIndex: 1000, background: "transparent" }} 
+                onClick={(e) => { e.stopPropagation(); setShowHotbar(false); }} 
+              />
+              <div 
+                style={{ 
+                  position: "absolute", 
+                  zIndex: 1001,
+                  [hotbarPosition === "above" ? "bottom" : "top"]: "calc(100% + 4px)",
+                  [isOwn ? "right" : "left"]: 0,
+                }}
+              >
+                <EmojiHotbar 
+                  currentHotbar={hotbar}
+                  onEditingChange={setIsHotbarEditing}
+                  onSelect={(emoji) => {
+                    void toggleReaction({ messageId: message._id, emoji });
+                    setShowHotbar(false);
+                  }}
+                  onCustomOpen={() => {
+                    setShowCustomPicker(true);
+                    setShowHotbar(false);
+                  }}
+                  onHotbarChange={(newHotbar) => void updateHotbar({ hotbar: newHotbar })}
+                />
+              </div>
+            </>
+          )}
+
+          {/* Reply/Edit/Delete Actions (Desktop) */}
+          {((!isMobile && hovered) || (!isMobile && showHotbar) || showCustomPicker || isHotbarEditing) && !isEditing && (
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                [isOwn ? "right" : "left"]: "calc(100% + 4px)",
+                display: "flex",
+                flexDirection: isOwn ? "row" : "row-reverse",
+                alignItems: "center",
+                gap: 4,
+                zIndex: 20,
+              }}
+            >
+              {!isMobile && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: isOwn ? "row" : "row-reverse",
+                    gap: 4,
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border-strong)",
+                    borderRadius: 6,
+                    padding: 2,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                  }}
+                >
+                  <button
+                    onClick={() => setShowHotbar(!showHotbar)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 4,
+                      color: showHotbar ? "var(--accent)" : "var(--text-muted)",
+                      display: "flex",
+                      borderRadius: 4,
+                    }}
+                    onMouseEnter={(e) => !showHotbar && (e.currentTarget.style.color = "var(--text)")}
+                    onMouseLeave={(e) => !showHotbar && (e.currentTarget.style.color = "var(--text-muted)")}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                      <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                      <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                    </svg>
+                  </button>
+                  <button
+                    onClick={onReply}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 4,
+                      color: "var(--text-muted)",
+                      display: "flex",
+                      borderRadius: 4,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="9 17 4 12 9 7"></polyline>
+                      <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+                    </svg>
+                  </button>
+                  {isOwn && (
+                    <>
+                      <button
+                        onClick={() => setIsEditing(true)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: 4,
+                          color: "var(--text-muted)",
+                          display: "flex",
+                          borderRadius: 4,
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4L18.5 2.5z"></path>
+                        </svg>
+                      </button>
+                      <button
+                        onClick={handleDelete}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: 4,
+                          color: "var(--text-muted)",
+                          display: "flex",
+                          borderRadius: 4,
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6"></polyline>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+              {showHotbar && !isMobile && (
+                <div style={{ position: "absolute", top: -40, [isOwn ? "right" : "left"]: 0 }}>
+                  <EmojiHotbar 
+                    currentHotbar={hotbar}
+                    onEditingChange={setIsHotbarEditing}
+                    onSelect={(emoji) => {
+                      void toggleReaction({ messageId: message._id, emoji });
+                      setShowHotbar(false);
+                    }}
+                    onCustomOpen={() => {
+                      setShowCustomPicker(true);
+                      setShowHotbar(false);
+                    }}
+                    onHotbarChange={(newHotbar) => void updateHotbar({ hotbar: newHotbar })}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+        {showCustomPicker && typeof document !== "undefined" && createPortal(
+          <div style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)" }}>
+            <div onClick={() => setShowCustomPicker(false)} style={{ position: "absolute", inset: 0 }} />
+            <div style={{ position: "relative", zIndex: 1001 }}>
+              <EmojiPicker 
+                theme={Theme.DARK} 
+                onEmojiClick={(emojiObj) => {
+                  void toggleReaction({ messageId: message._id, emoji: emojiObj.emoji });
+                  setShowCustomPicker(false);
+                }}
+              />
+            </div>
+          </div>,
+          document.body
         )}
 
         {!grouped && (
@@ -1503,9 +1862,17 @@ function MessageItem({
             <span>Seen by {readBy.join(", ")}</span>
           </div>
         )}
+
+        <Reactions 
+          reactions={message.reactions || []} 
+          onToggle={(emoji) => void toggleReaction({ messageId: message._id, emoji })}
+          viewerId={viewerId}
+          isOwn={isOwn}
+        />
       </div>
     </div>
-  );
+  </div>
+);
 }
 
 // ─── Supporting Components ────────────────────────────────────────────────────

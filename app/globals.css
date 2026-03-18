@@ -79,6 +79,22 @@ body {
   100% { background-position: 200% 0; }
 }
 
+@keyframes wiggle {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(5deg); }
+  50% { transform: rotate(0eg); }
+  75% { transform: rotate(-5deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.hover-scale {
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-scale:hover {
+  transform: scale(1.15);
+}
+
 .msg-enter {
   animation: fadeSlideUp 0.18s ease-out forwards;
 }
@@ -151,6 +167,10 @@ body {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 30;
 }
 
 @media (max-width: 768px) {
