@@ -566,6 +566,7 @@ function ChannelView({
   const [input, setInput] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Doc<"messages"> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -584,6 +585,7 @@ function ChannelView({
   useEffect(() => {
     setInput("");
     setImageFile(null);
+    setReplyingTo(null);
   }, [channel._id]);
 
   async function handleSend() {
@@ -593,7 +595,9 @@ function ChannelView({
     setInput("");
     
     const currentImageFile = imageFile;
+    const currentReplyToId = replyingTo?._id;
     setImageFile(null);
+    setReplyingTo(null);
 
     // Reset textarea height
     if (textareaRef.current) {
@@ -622,7 +626,12 @@ function ChannelView({
         imageId = storageId;
       }
 
-      await sendMessage({ channelId: channel._id, content, imageId });
+      await sendMessage({ 
+        channelId: channel._id, 
+        content, 
+        imageId,
+        replyToId: currentReplyToId,
+      });
       // Self mark read after sending
       void markRead({ channelId: channel._id });
     } catch (error) {
@@ -720,6 +729,7 @@ function ChannelView({
                 grouped={shouldGroup(messages[i - 1], msg)}
                 isOwn={isOwn}
                 readBy={messageReaders}
+                onReply={() => setReplyingTo(msg)}
               />
             );
           })
@@ -734,6 +744,8 @@ function ChannelView({
           setInput={setInput}
           imageFile={imageFile}
           setImageFile={setImageFile}
+          replyingTo={replyingTo}
+          onCancelReply={() => setReplyingTo(null)}
           canSend={canSend}
           onSend={() => void handleSend()}
           onKeyDown={handleKeyDown}
@@ -752,6 +764,8 @@ function MessageInput({
   setInput,
   imageFile,
   setImageFile,
+  replyingTo,
+  onCancelReply,
   canSend,
   onSend,
   onKeyDown,
@@ -762,6 +776,8 @@ function MessageInput({
   setInput: (v: string) => void;
   imageFile: File | null;
   setImageFile: (f: File | null) => void;
+  replyingTo: Doc<"messages"> | null;
+  onCancelReply: () => void;
   canSend: boolean;
   onSend: () => void;
   onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
@@ -802,11 +818,54 @@ function MessageInput({
             </div>
           </div>
         )}
+
+        {replyingTo && (
+          <div style={{
+            background: "var(--surface-2)",
+            border: "1px solid var(--border-strong)",
+            borderBottom: "none",
+            borderRadius: "10px 10px 0 0",
+            padding: "8px 12px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            animation: "fadeSlideUp 0.15s ease-out",
+          }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", margin: "0 0 2px" }}>
+                Replying to {getHandle(replyingTo.authorEmail)}
+              </p>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {replyingTo.content || "Image"}
+              </p>
+            </div>
+            <button
+              onClick={onCancelReply}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--text-dim)",
+                cursor: "pointer",
+                padding: 4,
+                display: "flex",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-dim)")}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        )}
+
         <div
           style={{
             background: "var(--surface)",
             border: `1px solid ${focused ? "rgba(122,110,245,0.4)" : "var(--border-strong)"}`,
-            borderRadius: 10,
+            borderRadius: replyingTo ? "0 0 10px 10px" : 10,
             display: "flex",
             flexDirection: "column",
             transition: "border-color 0.2s",
@@ -1007,23 +1066,31 @@ function MessageInput({
 
 // ─── Message Item ─────────────────────────────────────────────────────────────
 
-type MessageWithImage = Doc<"messages"> & { imageUrl?: string | null };
+type MessageWithImage = Doc<"messages"> & { 
+  imageUrl?: string | null; 
+  replyTo?: { content?: string; authorEmail: string } | null;
+};
 
 function MessageItem({
   message,
   grouped,
   isOwn,
   readBy = [],
+  onReply,
 }: {
   message: MessageWithImage;
   grouped: boolean;
   isOwn: boolean;
   readBy?: string[];
+  onReply?: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content || "");
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const touchStartX = useRef<number | null>(null);
+
   const updateMessage = useMutation(api.messages.update);
   const removeMessage = useMutation(api.messages.remove);
   const editInputRef = useRef<HTMLTextAreaElement>(null);
@@ -1062,11 +1129,35 @@ function MessageItem({
     }
   }
 
+  // Swipe-to-reply logic
+  function onTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0].clientX;
+  }
+
+  function onTouchMove(e: React.TouchEvent) {
+    if (touchStartX.current === null) return;
+    const diff = e.touches[0].clientX - touchStartX.current;
+    if (diff > 0) { // Only swipe right
+      setSwipeOffset(Math.min(diff, 60));
+    }
+  }
+
+  function onTouchEnd() {
+    if (swipeOffset >= 50) {
+      onReply?.();
+    }
+    setSwipeOffset(0);
+    touchStartX.current = null;
+  }
+
   return (
     <div
       className="msg-enter"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
       style={{
         display: "flex",
         flexDirection: isOwn ? "row-reverse" : "row",
@@ -1076,8 +1167,26 @@ function MessageItem({
         transition: "background 0.1s",
         alignItems: "flex-end",
         position: "relative",
+        transform: `translateX(${swipeOffset}px)`,
       }}
     >
+      {/* Swipe Reply Icon Indicator */}
+      {swipeOffset > 10 && (
+        <div style={{
+          position: "absolute",
+          left: -40,
+          top: "50%",
+          transform: "translateY(-50%)",
+          opacity: Math.min(swipeOffset / 50, 1),
+          color: "var(--accent)",
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 17 4 12 9 7"></polyline>
+            <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+          </svg>
+        </div>
+      )}
+
       {/* Avatar */}
       <div style={{ width: 32, flexShrink: 0 }}>
         {!grouped ? (
@@ -1122,16 +1231,18 @@ function MessageItem({
           alignItems: isOwn ? "flex-end" : "flex-start",
           flex: isEditing ? 1 : "initial",
           position: "relative",
+          maxWidth: "80%",
         }}
       >
-        {/* Edit/Delete Actions */}
-        {isOwn && hovered && !isEditing && (
+        {/* Reply/Edit/Delete Actions */}
+        {hovered && !isEditing && (
           <div
             style={{
               position: "absolute",
-              top: grouped ? -16 : -12,
-              [isOwn ? "right" : "left"]: 0,
+              top: 0,
+              [isOwn ? "right" : "left"]: "calc(100% + 4px)",
               display: "flex",
+              flexDirection: isOwn ? "row" : "row-reverse",
               gap: 4,
               background: "var(--surface-2)",
               border: "1px solid var(--border-strong)",
@@ -1141,44 +1252,93 @@ function MessageItem({
               boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
             }}
           >
-            <button
-              onClick={() => setIsEditing(true)}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: 4,
-                color: "var(--text-muted)",
-                display: "flex",
-                borderRadius: 4,
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4L18.5 2.5z"></path>
-              </svg>
-            </button>
-            <button
-              onClick={handleDelete}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: 4,
-                color: "var(--text-muted)",
-                display: "flex",
-                borderRadius: 4,
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </button>
+            {!isOwn && (
+              <button
+                onClick={onReply}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 4,
+                  color: "var(--text-muted)",
+                  display: "flex",
+                  borderRadius: 4,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 17 4 12 9 7"></polyline>
+                  <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+                </svg>
+              </button>
+            )}
+            {isOwn && (
+              <>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 4,
+                    color: "var(--text-muted)",
+                    display: "flex",
+                    borderRadius: 4,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4L18.5 2.5z"></path>
+                  </svg>
+                </button>
+                <button
+                  onClick={handleDelete}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 4,
+                    color: "var(--text-muted)",
+                    display: "flex",
+                    borderRadius: 4,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Reply Preview */}
+        {message.replyTo && (
+          <div style={{
+            background: "rgba(255,255,255,0.05)",
+            borderLeft: "2px solid var(--accent)",
+            padding: "4px 8px",
+            borderRadius: "4px 4px 0 0",
+            fontSize: 12,
+            marginBottom: -4,
+            width: "100%",
+            color: "var(--text-muted)",
+            opacity: 0.8,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}>
+            <span style={{ fontWeight: 600, color: "var(--accent-dim)" }}>
+              {getHandle(message.replyTo.authorEmail)}
+            </span>
+            {": "}
+            {message.replyTo.content || "Image"}
           </div>
         )}
 

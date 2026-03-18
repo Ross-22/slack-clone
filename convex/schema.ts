@@ -14,6 +14,7 @@ export default defineSchema({
     authorEmail: v.string(),
     content: v.optional(v.string()),
     imageId: v.optional(v.id("_storage")),
+    replyToId: v.optional(v.id("messages")),
   }).index("by_channel", ["channelId"]),
   readReceipts: defineTable({
     channelId: v.id("channels"),

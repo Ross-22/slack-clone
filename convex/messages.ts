@@ -17,7 +17,19 @@ export const list = query({
         if (msg.imageId) {
           imageUrl = await ctx.storage.getUrl(msg.imageId);
         }
-        return { ...msg, imageUrl };
+        
+        let replyTo = null;
+        if (msg.replyToId) {
+          const original = await ctx.db.get(msg.replyToId);
+          if (original) {
+            replyTo = {
+              content: original.content,
+              authorEmail: original.authorEmail,
+            };
+          }
+        }
+        
+        return { ...msg, imageUrl, replyTo };
       })
     );
   },
@@ -28,6 +40,7 @@ export const send = mutation({
     channelId: v.id("channels"),
     content: v.optional(v.string()),
     imageId: v.optional(v.id("_storage")),
+    replyToId: v.optional(v.id("messages")),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -44,6 +57,7 @@ export const send = mutation({
       userId,
       authorEmail: user?.email ?? "unknown",
       content,
+      replyToId: args.replyToId,
       ...(args.imageId ? { imageId: args.imageId } : {}),
     });
   },
