@@ -1,5 +1,6 @@
 "use client";
 
+import EmojiPicker, { Theme } from "emoji-picker-react";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
@@ -673,26 +674,54 @@ function MessageInput({
 }) {
   const [focused, setFocused] = useState(false);
   const [btnHovered, setBtnHovered] = useState(false);
+  const [emojiHovered, setEmojiHovered] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  const handleEmojiClick = (emojiObj: { emoji: string }) => {
+    setInput((prev) => prev + emojiObj.emoji);
+    textareaRef.current?.focus();
+  };
 
   return (
     <>
-      <div
-        style={{
-          background: "var(--surface)",
-          border: `1px solid ${focused ? "rgba(122,110,245,0.4)" : "var(--border-strong)"}`,
-          borderRadius: 10,
-          display: "flex",
-          alignItems: "flex-end",
-          gap: 8,
-          padding: "10px 10px 10px 14px",
-          transition: "border-color 0.2s",
-        }}
-      >
-        <textarea
+      <div style={{ position: "relative" }}>
+        {showEmojiPicker && (
+          <div style={{ position: "absolute", bottom: "100%", right: 0, marginBottom: 12, zIndex: 50 }}>
+            <div 
+              style={{ position: "fixed", inset: 0 }} 
+              onClick={() => setShowEmojiPicker(false)}
+            />
+            <div style={{ position: "relative", boxShadow: "0 4px 24px rgba(0,0,0,0.5)", borderRadius: 8 }}>
+              <EmojiPicker onEmojiClick={handleEmojiClick} theme={Theme.DARK} />
+            </div>
+          </div>
+        )}
+        <div
+          style={{
+            background: "var(--surface)",
+            border: `1px solid ${focused ? "rgba(122,110,245,0.4)" : "var(--border-strong)"}`,
+            borderRadius: 10,
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 8,
+            padding: "10px 10px 10px 14px",
+            transition: "border-color 0.2s",
+          }}
+        >
+          <textarea
           ref={textareaRef}
           value={input}
           onChange={(e) => {
-            setInput(e.target.value);
+            let val = e.target.value;
+            val = val.replace(/<3/g, "❤️")
+                     .replace(/:-\)/g, "🙂")
+                     .replace(/:\)/g, "🙂")
+                     .replace(/:-\(/g, "🙁")
+                     .replace(/:\(/g, "🙁")
+                     .replace(/:D/g, "😃")
+                     .replace(/;-\)/g, "😉")
+                     .replace(/;\)/g, "😉");
+            setInput(val);
             e.target.style.height = "auto";
             e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
           }}
@@ -716,6 +745,31 @@ function MessageInput({
             paddingTop: 1,
           }}
         />
+          <button
+            onClick={() => setShowEmojiPicker((prev) => !prev)}
+            onMouseEnter={() => setEmojiHovered(true)}
+            onMouseLeave={() => setEmojiHovered(false)}
+            title="Add emoji"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "0 4px 6px 4px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: emojiHovered ? "var(--accent)" : "var(--text-dim)",
+              transition: "color 0.15s",
+              flexShrink: 0,
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+              <line x1="9" y1="9" x2="9.01" y2="9"></line>
+              <line x1="15" y1="9" x2="15.01" y2="9"></line>
+            </svg>
+          </button>
         <button
           onClick={onSend}
           disabled={!canSend}
@@ -752,6 +806,7 @@ function MessageInput({
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>
         </button>
+      </div>
       </div>
       <p
         style={{
