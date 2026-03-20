@@ -120,3 +120,28 @@ export const remove = mutation({
     await ctx.db.delete(args.messageId);
   },
 });
+
+export const getRecentGlobal = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+
+    const recent = await ctx.db
+      .query("messages")
+      .order("desc")
+      .take(10);
+
+    return Promise.all(
+      recent.map(async (msg) => {
+        const channel = await ctx.db.get(msg.channelId);
+        const author = await ctx.db.get(msg.userId);
+        return {
+          ...msg,
+          channelName: channel?.name ?? "unknown",
+          authorName: author?.name ?? author?.email ?? "unknown",
+        };
+      })
+    );
+  },
+});

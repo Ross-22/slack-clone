@@ -9,6 +9,7 @@ import { Id, Doc } from "@/convex/_generated/dataModel";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
 import { ProfileModal } from "@/components/ProfileModal";
+import { NotificationHandler } from "@/components/NotificationHandler";
 import {
   useState,
   useEffect,
@@ -151,6 +152,7 @@ function ChatApp() {
         position: "relative",
       }}
     >
+      <NotificationHandler selectedChannelId={selectedChannelId} />
       <Sidebar
         channels={channels ?? []}
         selectedChannelId={selectedChannelId}
