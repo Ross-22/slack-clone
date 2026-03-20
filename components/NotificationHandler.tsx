@@ -68,22 +68,16 @@ export function NotificationHandler({
       const shouldNotify = !isWindowFocused.current || msg.channelId !== selectedChannelId;
 
       if (shouldNotify) {
-        console.log("🔔 Should notify for message:", msg._id);
         // Play notification sound
         if (audioRef.current) {
           audioRef.current.currentTime = 0;
-          audioRef.current.play().then(() => {
-            console.log("🔊 Sound played successfully");
-          }).catch((err) => {
-            console.warn("🔇 Audio play blocked or failed:", err);
-          });
-        } else {
-          console.error("❌ Audio ref is null");
+          void audioRef.current.play().catch(() => {});
         }
 
         if ("Notification" in window && Notification.permission === "granted") {
           const title = `${msg.authorName} in #${msg.channelName}`;
-          const options: NotificationOptions = {
+          // Cast to any to avoid TS error on 'renotify' which is missing in some lib.dom.d.ts versions
+          const options: any = {
             body: msg.content || "Image attached",
             icon: "/convex.svg",
             tag: msg.channelId, // Group notifications by channel
