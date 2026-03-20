@@ -18,10 +18,9 @@ export function NotificationHandler({
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    // Pre-load audio with a distinct car double horn honk (Honk-Honk!)
-    // URL: https://assets.mixkit.co/sfx/preview/mixkit-car-double-horn-719.mp3
-    audioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/719/719-preview.mp3");
-    audioRef.current.volume = 0.7;
+    // Pre-load audio with a small car horn beep sound
+    audioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/717/717-preview.mp3");
+    audioRef.current.volume = 0.5;
 
     const onFocus = () => (isWindowFocused.current = true);
     const onBlur = () => (isWindowFocused.current = false);
