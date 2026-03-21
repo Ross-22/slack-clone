@@ -958,7 +958,7 @@ function MessageInput({
     const mentionsToSend: Id<"users">[] = [];
     currentMentions.forEach(id => {
       const user = users.find(u => u._id === id);
-      const name = user?.name || (user ? getHandle(user.email) : "");
+      const name = user?.name || (user?.email ? getHandle(user.email) : "");
       if (input.includes(`@${name}`)) {
         mentionsToSend.push(id);
       }
