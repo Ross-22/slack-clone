@@ -26,7 +26,7 @@ function getHandle(email: string) {
 }
 
 function getInitial(email: string) {
-  return email[0].toUpperCase();
+  return email ? email[0].toUpperCase() : "?";
 }
 
 function formatTime(timestamp: number) {
@@ -1047,11 +1047,11 @@ function MessageInput({
                   color: "#fff",
                   fontWeight: 700,
                 }}>
-                  {!user.imageUrl && getInitial(user.email)}
+                  {!user.imageUrl && getInitial(user.email || "")}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {user.name || getHandle(user.email)}
+                    {user.name || getHandle(user.email || "")}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {user.email}
