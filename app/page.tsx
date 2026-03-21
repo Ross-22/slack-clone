@@ -36,7 +36,7 @@ function formatTime(timestamp: number) {
   });
 }
 
-function renderContent(content: string, isInput = false) {
+function renderContent(content: string, isInput = false, isOwn = false) {
   const parts = content.split(/(@\w+|@everyone)/g);
   return parts.map((part, i) => {
     if (part.startsWith("@")) {
@@ -49,7 +49,7 @@ function renderContent(content: string, isInput = false) {
             fontWeight: isInput ? "inherit" : 800,
             background: isInput ? "rgba(122,110,245,0.15)" : "none",
             borderBottom: isInput ? "1px solid var(--accent)" : "none",
-            ...(isGlobal && !isInput ? { color: "var(--accent)", textDecoration: "underline" } : {})
+            ...(isGlobal && !isInput ? { color: isOwn ? "inherit" : "var(--accent)", textDecoration: "underline" } : {})
           }}
         >
           {part}
@@ -1239,7 +1239,7 @@ function MessageInput({
                   visibility: input ? "visible" : "hidden",
                 }}
               >
-                {renderContent(input, true)}
+                {renderContent(input, true, false)}
                 <span style={{ color: "transparent" }}>{input.endsWith("\n") ? "\n " : ""}</span>
                 </div>              <textarea
                 ref={textareaRef}
@@ -2236,7 +2236,7 @@ function MessageItem({
                 whiteSpace: "pre-wrap",
               }}
             >
-              {renderContent(message.content, false)}
+              {renderContent(message.content, false, isOwn)}
             </p>
           </div>
         )}
