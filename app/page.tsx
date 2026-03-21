@@ -144,25 +144,24 @@ export default function Home() {
 // ─── ChatApp ─────────────────────────────────────────────────────────────────
 
 function ChatApp() {
+  const channels = useQuery(api.channels.list);
+  const seedChannels = useMutation(api.channels.seed);
+  
   const [selectedChannelId, setSelectedChannelId] =
     useState<Id<"channels"> | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
-  const channels = useQuery(api.channels.list);
-  const seedChannels = useMutation(api.channels.seed);
+  // Set initial channel if none selected
+  if (channels && channels.length > 0 && !selectedChannelId) {
+    setSelectedChannelId(channels[0]._id);
+  }
 
   useEffect(() => {
     if (channels !== undefined && channels.length === 0) {
       void seedChannels({});
     }
   }, [channels, seedChannels]);
-
-  useEffect(() => {
-    if (channels && channels.length > 0 && !selectedChannelId) {
-      setSelectedChannelId(channels[0]._id);
-    }
-  }, [channels, selectedChannelId]);
 
   const selectedChannel = channels?.find((c) => c._id === selectedChannelId);
 
@@ -900,22 +899,26 @@ function MessageInput({
   // Mention State
   const [mentionSearch, setMentionSearch] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
-  const users = useQuery(api.users.list) ?? [];
+  const rawUsers = useQuery(api.users.list);
+  const users = useMemo(() => rawUsers ?? [], [rawUsers]);
   const [currentMentions, setCurrentMentions] = useState<Set<Id<"users">>>(new Set());
+
+  // Reset mention index when search changes
+  const [prevMentionSearch, setPrevMentionSearch] = useState<string | null>(null);
+  if (mentionSearch !== prevMentionSearch) {
+    setMentionIndex(0);
+    setPrevMentionSearch(mentionSearch);
+  }
 
   const filteredUsers = useMemo(() => {
     if (mentionSearch === null) return [];
     const query = mentionSearch.toLowerCase();
-    return users
+    return (users || [])
       .filter(u => 
         u.email && (u.name?.toLowerCase().includes(query) || u.email.toLowerCase().includes(query))
       )
       .slice(0, 10);
   }, [users, mentionSearch]);
-
-  useEffect(() => {
-    setMentionIndex(0);
-  }, [mentionSearch]);
 
   const handleEmojiClick = (emojiObj: { emoji: string }) => {
     setInput(input + emojiObj.emoji);
@@ -1034,7 +1037,7 @@ function MessageInput({
                   width: 24,
                   height: 24,
                   borderRadius: 6,
-                  backgroundColor: user.imageUrl ? "transparent" : stringToColor(user.email),
+                  backgroundColor: user.imageUrl ? "transparent" : stringToColor(user.email || ""),
                   backgroundImage: user.imageUrl ? `url(${user.imageUrl})` : "none",
                   backgroundSize: "cover",
                   display: "flex",
@@ -1540,7 +1543,7 @@ function Reactions({
       }}
     >
       {Array.from(groups.entries()).map(([emoji, userIds]) => {
-        const hasReacted = viewerId && userIds.includes(viewerId as any);
+        const hasReacted = viewerId && userIds.includes(viewerId as Id<"users">);
         return (
           <button
             key={emoji}
@@ -1610,9 +1613,10 @@ function MessageItem({
     if (isEditing) {
       editInputRef.current?.focus();
       // Move cursor to end
-      editInputRef.current?.setSelectionRange(editContent.length, editContent.length);
+      const length = editContent.length;
+      editInputRef.current?.setSelectionRange(length, length);
     }
-  }, [isEditing]);
+  }, [isEditing, editContent.length]);
 
   async function handleUpdate() {
     const trimmed = editContent.trim();
@@ -1705,7 +1709,7 @@ function MessageItem({
     touchStartY.current = null;
   }
 
-  const handleDoubleClick = (e: React.MouseEvent | React.TouchEvent) => {
+  const handleDoubleClick = (_e: React.MouseEvent | React.TouchEvent) => {
     if (isEditing || !hotbar[0]) return;
     // Prevent default to avoid zoom on mobile if possible, 
     // though onDoubleClick is a desktop event.

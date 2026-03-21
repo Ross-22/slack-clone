@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import Cropper from "react-easy-crop";
+import Cropper, { Area } from "react-easy-crop";
 import imageCompression from "browser-image-compression";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [isCropping, setIsCropping] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
@@ -95,7 +95,7 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
     }
   }, [user, name]);
 
-  const onCropComplete = (_croppedArea: any, croppedAreaPixels: any) => {
+  const onCropComplete = (_croppedArea: Area, croppedAreaPixels: Area) => {
     setCroppedAreaPixels(croppedAreaPixels);
   };
 

@@ -29,7 +29,7 @@ export const update = mutation({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
     
-    const updates: any = {};
+    const updates: { name?: string; image?: Id<"_storage"> } = {};
     if (name !== undefined) updates.name = name;
     if (image !== undefined) updates.image = image;
     
@@ -37,10 +37,13 @@ export const update = mutation({
   },
 });
 
-export const generateUploadUrl = mutation(async (ctx) => {
-  const userId = await getAuthUserId(ctx);
-  if (!userId) throw new Error("Unauthorized");
-  return await ctx.storage.generateUploadUrl();
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+    return await ctx.storage.generateUploadUrl();
+  },
 });
 
 export const list = query({

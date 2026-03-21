@@ -79,8 +79,8 @@ export function NotificationHandler({
           const title = isMentioned 
             ? `⚠️ Mentioned by ${msg.authorName} in #${msg.channelName}`
             : `${msg.authorName} in #${msg.channelName}`;
-          // Cast to any to avoid TS error on 'renotify' which is missing in some lib.dom.d.ts versions
-          const options: any = {
+          
+          const options: NotificationOptions & { renotify?: boolean; requireInteraction?: boolean } = {
             body: msg.content || "Image attached",
             icon: "/convex.svg",
             tag: isMentioned ? `mention-${msg._id}` : msg.channelId, // Group notifications by channel, but mentions are unique
