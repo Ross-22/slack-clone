@@ -63,8 +63,10 @@ export function NotificationHandler({
       // Don't notify for our own messages
       if (msg.userId === me._id) continue;
 
-      // Only notify if window is not focused OR message is in another channel
-      const shouldNotify = !isWindowFocused.current || msg.channelId !== selectedChannelId;
+      const isMentioned = msg.mentions?.includes(me._id);
+
+      // Only notify if window is not focused OR message is in another channel OR mentioned
+      const shouldNotify = !isWindowFocused.current || msg.channelId !== selectedChannelId || isMentioned;
 
       if (shouldNotify) {
         // Play notification sound
@@ -74,13 +76,16 @@ export function NotificationHandler({
         }
 
         if ("Notification" in window && Notification.permission === "granted") {
-          const title = `${msg.authorName} in #${msg.channelName}`;
+          const title = isMentioned 
+            ? `⚠️ Mentioned by ${msg.authorName} in #${msg.channelName}`
+            : `${msg.authorName} in #${msg.channelName}`;
           // Cast to any to avoid TS error on 'renotify' which is missing in some lib.dom.d.ts versions
           const options: any = {
             body: msg.content || "Image attached",
             icon: "/convex.svg",
-            tag: msg.channelId, // Group notifications by channel
+            tag: isMentioned ? `mention-${msg._id}` : msg.channelId, // Group notifications by channel, but mentions are unique
             renotify: true,
+            requireInteraction: isMentioned, // Mention notifications stay until clicked
           };
           
           try {

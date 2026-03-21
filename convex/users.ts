@@ -42,3 +42,19 @@ export const generateUploadUrl = mutation(async (ctx) => {
   if (!userId) throw new Error("Unauthorized");
   return await ctx.storage.generateUploadUrl();
 });
+
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    return Promise.all(
+      users.map(async (user) => ({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        image: user.image,
+        imageUrl: user.image ? await ctx.storage.getUrl(user.image) : null,
+      }))
+    );
+  },
+});

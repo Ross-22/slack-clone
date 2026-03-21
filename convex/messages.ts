@@ -55,6 +55,7 @@ export const send = mutation({
     content: v.optional(v.string()),
     imageId: v.optional(v.id("_storage")),
     replyToId: v.optional(v.id("messages")),
+    mentions: v.optional(v.array(v.id("users"))),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -72,6 +73,7 @@ export const send = mutation({
       authorEmail: user?.email ?? "unknown",
       content,
       replyToId: args.replyToId,
+      mentions: args.mentions,
       ...(args.imageId ? { imageId: args.imageId } : {}),
     });
   },

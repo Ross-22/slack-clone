@@ -14,6 +14,7 @@ import {
   useState,
   useEffect,
   useRef,
+  useMemo,
   FormEvent,
   KeyboardEvent,
 } from "react";
@@ -673,7 +674,7 @@ function ChannelView({
     setReplyingTo(null);
   }, [channel._id]);
 
-  async function handleSend() {
+  async function handleSend(mentions?: Id<"users">[]) {
     const content = input.trim();
     if ((!content && !imageFile) || sending) return;
     setSending(true);
@@ -716,6 +717,7 @@ function ChannelView({
         content, 
         imageId,
         replyToId: currentReplyToId,
+        mentions,
       });
       // Self mark read after sending
       void markRead({ channelId: channel._id });
@@ -727,11 +729,8 @@ function ChannelView({
     }
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void handleSend();
-    }
+  function handleKeyDown(_e: KeyboardEvent<HTMLTextAreaElement>) {
+    // Other key handlers can go here if needed.
   }
 
   const canSend = (input.trim().length > 0 || imageFile !== null) && !sending;
@@ -832,7 +831,7 @@ function ChannelView({
           replyingTo={replyingTo}
           onCancelReply={() => setReplyingTo(null)}
           canSend={canSend}
-          onSend={() => void handleSend()}
+          onSend={(mentions) => void handleSend(mentions)}
           onKeyDown={handleKeyDown}
           textareaRef={textareaRef}
           placeholder={`Message #${channel.name}`}
@@ -864,7 +863,7 @@ function MessageInput({
   replyingTo: Doc<"messages"> | null;
   onCancelReply: () => void;
   canSend: boolean;
-  onSend: () => void;
+  onSend: (mentions?: Id<"users">[]) => void;
   onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   placeholder: string;
@@ -876,9 +875,52 @@ function MessageInput({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Mention State
+  const [mentionSearch, setMentionSearch] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const users = useQuery(api.users.list) ?? [];
+  const [currentMentions, setCurrentMentions] = useState<Set<Id<"users">>>(new Set());
+
+  const filteredUsers = useMemo(() => {
+    if (mentionSearch === null) return [];
+    const query = mentionSearch.toLowerCase();
+    return users
+      .filter(u => 
+        (u.name?.toLowerCase().includes(query) || u.email.toLowerCase().includes(query))
+      )
+      .slice(0, 10);
+  }, [users, mentionSearch]);
+
+  useEffect(() => {
+    setMentionIndex(0);
+  }, [mentionSearch]);
+
   const handleEmojiClick = (emojiObj: { emoji: string }) => {
     setInput(input + emojiObj.emoji);
     textareaRef.current?.focus();
+  };
+
+  const insertMention = (user: { _id: Id<"users">; name?: string; email: string }) => {
+    if (mentionSearch === null) return;
+    
+    const cursor = textareaRef.current?.selectionStart ?? 0;
+    const textBefore = input.substring(0, cursor - mentionSearch.length - 1);
+    const textAfter = input.substring(cursor);
+    const name = user.name || getHandle(user.email);
+    
+    const newValue = `${textBefore}@${name} ${textAfter}`;
+    setInput(newValue);
+    setMentionSearch(null);
+    setCurrentMentions(prev => new Set(prev).add(user._id));
+    
+    // Focus back and move cursor
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursor = textBefore.length + name.length + 2;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursor, newCursor);
+      }
+    }, 0);
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -889,9 +931,112 @@ function MessageInput({
 
   const removeImage = () => setImageFile(null);
 
+  const handleSend = () => {
+    // Collect all mentions currently in the text
+    const mentionsToSend: Id<"users">[] = [];
+    currentMentions.forEach(id => {
+      const user = users.find(u => u._id === id);
+      const name = user?.name || (user ? getHandle(user.email) : "");
+      if (input.includes(`@${name}`)) {
+        mentionsToSend.push(id);
+      }
+    });
+    onSend(mentionsToSend);
+    setCurrentMentions(new Set());
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionSearch !== null && filteredUsers.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex(prev => (prev + 1) % filteredUsers.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex(prev => (prev - 1 + filteredUsers.length) % filteredUsers.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        insertMention(filteredUsers[mentionIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionSearch(null);
+        return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+      return;
+    }
+    onKeyDown(e);
+  };
+
   return (
     <>
       <div style={{ position: "relative" }}>
+        {mentionSearch !== null && filteredUsers.length > 0 && (
+          <div style={{
+            position: "absolute",
+            bottom: "100%",
+            left: 0,
+            marginBottom: 8,
+            width: 240,
+            background: "var(--surface-2)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: 8,
+            boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+            overflow: "hidden",
+            zIndex: 100,
+          }}>
+            {filteredUsers.map((user, i) => (
+              <div
+                key={user._id}
+                onClick={() => insertMention(user)}
+                onMouseEnter={() => setMentionIndex(i)}
+                style={{
+                  padding: "8px 12px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  cursor: "pointer",
+                  background: i === mentionIndex ? "var(--accent-dim)" : "transparent",
+                  transition: "background 0.1s",
+                }}
+              >
+                <div style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 6,
+                  backgroundColor: user.imageUrl ? "transparent" : stringToColor(user.email),
+                  backgroundImage: user.imageUrl ? `url(${user.imageUrl})` : "none",
+                  backgroundSize: "cover",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 10,
+                  color: "#fff",
+                  fontWeight: 700,
+                }}>
+                  {!user.imageUrl && getInitial(user.email)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {user.name || getHandle(user.email)}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {user.email}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {showEmojiPicker && (
           <div style={{ position: "absolute", bottom: "100%", right: 0, marginBottom: 12, zIndex: 50 }}>
             <div 
@@ -1034,8 +1179,23 @@ function MessageInput({
             setInput(val);
             e.target.style.height = "auto";
             e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+
+            // Detect @ for mentions
+            const cursor = e.target.selectionStart;
+            const textBefore = val.substring(0, cursor);
+            const atIndex = textBefore.lastIndexOf("@");
+            if (atIndex !== -1 && (atIndex === 0 || textBefore[atIndex - 1] === " ")) {
+              const query = textBefore.substring(atIndex + 1);
+              if (!query.includes(" ")) {
+                setMentionSearch(query);
+              } else {
+                setMentionSearch(null);
+              }
+            } else {
+              setMentionSearch(null);
+            }
           }}
-          onKeyDown={onKeyDown}
+          onKeyDown={handleKeyDown}
           onPaste={(e) => {
             const items = e.clipboardData?.items;
             if (!items) return;
@@ -1051,7 +1211,11 @@ function MessageInput({
             }
           }}
           onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onBlur={() => {
+            setFocused(false);
+            // Delay closing mentions to allow for click
+            setTimeout(() => setMentionSearch(null), 150);
+          }}
           placeholder={placeholder}
           rows={1}
           style={{
@@ -1096,7 +1260,7 @@ function MessageInput({
             </svg>
           </button>
         <button
-          onClick={onSend}
+          onClick={handleSend}
           onMouseDown={(e) => e.preventDefault()}
           disabled={!canSend}
           onMouseEnter={() => setBtnHovered(true)}
@@ -1868,10 +2032,9 @@ function MessageItem({
                   display: "inline-block",
                   fontSize: 11,
                   marginLeft: 2
-                }}>
-                  "{message.replyTo.content}"
-                </span>
-              )}
+                  }}>
+                  &ldquo;{message.replyTo.content}&rdquo;
+                  </span>              )}
             </span>
           </div>
         )}
