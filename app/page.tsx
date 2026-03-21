@@ -36,6 +36,28 @@ function formatTime(timestamp: number) {
   });
 }
 
+function renderContent(content: string, isInput = false) {
+  const parts = content.split(/(@\w+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("@")) {
+      return (
+        <strong 
+          key={i} 
+          style={{ 
+            color: isInput ? "var(--accent)" : "inherit", 
+            fontWeight: isInput ? "inherit" : 800,
+            background: isInput ? "rgba(122,110,245,0.15)" : "none",
+            borderBottom: isInput ? "1px solid var(--accent)" : "none",
+          }}
+        >
+          {part}
+        </strong>
+      );
+    }
+    return part;
+  });
+}
+
 function shouldGroup(
   prev: Doc<"messages"> | undefined,
   curr: Doc<"messages">
@@ -886,7 +908,7 @@ function MessageInput({
     const query = mentionSearch.toLowerCase();
     return users
       .filter(u => 
-        (u.name?.toLowerCase().includes(query) || u.email.toLowerCase().includes(query))
+        (u.name?.toLowerCase().includes(query) || u.email?.toLowerCase().includes(query))
       )
       .slice(0, 10);
   }, [users, mentionSearch]);
@@ -1163,76 +1185,106 @@ function MessageInput({
               style={{ display: "none" }} 
               onChange={handleImageChange} 
             />
-            <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => {
-            let val = e.target.value;
-            val = val.replace(/<3/g, "❤️")
-                     .replace(/:-\)/g, "🙂")
-                     .replace(/:\)/g, "🙂")
-                     .replace(/:-\(/g, "🙁")
-                     .replace(/:\(/g, "🙁")
-                     .replace(/:D/g, "😃")
-                     .replace(/;-\)/g, "😉")
-                     .replace(/;\)/g, "😉");
-            setInput(val);
-            e.target.style.height = "auto";
-            e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+            <div style={{ flex: 1, position: "relative", minHeight: 24, display: "flex" }}>
+              <div 
+                id="input-overlay"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  paddingTop: 1,
+                  pointerEvents: "none",
+                  fontSize: 14,
+                  fontFamily: "inherit",
+                  lineHeight: 1.55,
+                  maxHeight: 120,
+                  overflow: "hidden",
+                  color: "var(--text)",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  zIndex: 1,
+                  visibility: input ? "visible" : "hidden",
+                }}
+              >
+                {renderContent(input, true)}
+                <span style={{ color: "transparent" }}>{input.endsWith("\n") ? "\n " : ""}</span>
+                </div>              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => {
+                  let val = e.target.value;
+                  val = val.replace(/<3/g, "❤️")
+                           .replace(/:-\)/g, "🙂")
+                           .replace(/:\)/g, "🙂")
+                           .replace(/:-\(/g, "🙁")
+                           .replace(/:\(/g, "🙁")
+                           .replace(/:D/g, "😃")
+                           .replace(/;-\)/g, "😉")
+                           .replace(/;\)/g, "😉");
+                  setInput(val);
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
 
-            // Detect @ for mentions
-            const cursor = e.target.selectionStart;
-            const textBefore = val.substring(0, cursor);
-            const atIndex = textBefore.lastIndexOf("@");
-            if (atIndex !== -1 && (atIndex === 0 || textBefore[atIndex - 1] === " ")) {
-              const query = textBefore.substring(atIndex + 1);
-              if (!query.includes(" ")) {
-                setMentionSearch(query);
-              } else {
-                setMentionSearch(null);
-              }
-            } else {
-              setMentionSearch(null);
-            }
-          }}
-          onKeyDown={handleKeyDown}
-          onPaste={(e) => {
-            const items = e.clipboardData?.items;
-            if (!items) return;
-            for (const item of items) {
-              if (item.type.startsWith("image/")) {
-                const file = item.getAsFile();
-                if (file) {
-                  setImageFile(file);
-                  e.preventDefault();
-                  break;
-                }
-              }
-            }
-          }}
-          onFocus={() => setFocused(true)}
-          onBlur={() => {
-            setFocused(false);
-            // Delay closing mentions to allow for click
-            setTimeout(() => setMentionSearch(null), 150);
-          }}
-          placeholder={placeholder}
-          rows={1}
-          style={{
-            flex: 1,
-            background: "none",
-            border: "none",
-            outline: "none",
-            resize: "none",
-            color: "var(--text)",
-            fontSize: 14,
-            fontFamily: "inherit",
-            lineHeight: 1.55,
-            maxHeight: 120,
-            overflow: "auto",
-            paddingTop: 1,
-          }}
-        />
+                  // Detect @ for mentions
+                  const cursor = e.target.selectionStart;
+                  const textBefore = val.substring(0, cursor);
+                  const atIndex = textBefore.lastIndexOf("@");
+                  if (atIndex !== -1 && (atIndex === 0 || textBefore[atIndex - 1] === " ")) {
+                    const query = textBefore.substring(atIndex + 1);
+                    if (!query.includes(" ")) {
+                      setMentionSearch(query);
+                    } else {
+                      setMentionSearch(null);
+                    }
+                  } else {
+                    setMentionSearch(null);
+                  }
+                }}
+                onKeyDown={handleKeyDown}
+                onPaste={(e) => {
+                  const items = e.clipboardData?.items;
+                  if (!items) return;
+                  for (const item of items) {
+                    if (item.type.startsWith("image/")) {
+                      const file = item.getAsFile();
+                      if (file) {
+                        setImageFile(file);
+                        e.preventDefault();
+                        break;
+                      }
+                    }
+                  }
+                }}
+                onFocus={() => setFocused(true)}
+                onBlur={() => {
+                  setFocused(false);
+                  // Delay closing mentions to allow for click
+                  setTimeout(() => setMentionSearch(null), 150);
+                }}
+                onScroll={(e) => {
+                  const overlay = document.getElementById("input-overlay");
+                  if (overlay) overlay.scrollTop = (e.target as HTMLTextAreaElement).scrollTop;
+                }}
+                placeholder={placeholder}
+                rows={1}
+                style={{
+                  flex: 1,
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  resize: "none",
+                  color: "transparent",
+                  caretColor: "var(--text)",
+                  fontSize: 14,
+                  fontFamily: "inherit",
+                  lineHeight: 1.55,
+                  maxHeight: 120,
+                  overflow: "auto",
+                  paddingTop: 1,
+                  position: "relative",
+                  zIndex: 2,
+                }}
+              />
+            </div>
           <button
             onClick={() => setShowEmojiPicker((prev) => !prev)}
             onMouseDown={(e) => e.preventDefault()}
@@ -2149,7 +2201,7 @@ function MessageItem({
                 whiteSpace: "pre-wrap",
               }}
             >
-              {message.content}
+              {renderContent(message.content, false)}
             </p>
           </div>
         )}
