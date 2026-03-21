@@ -63,7 +63,7 @@ export function NotificationHandler({
       // Don't notify for our own messages
       if (msg.userId === me._id) continue;
 
-      const isMentioned = msg.mentions?.includes(me._id);
+      const isMentioned = msg.mentions?.includes(me._id) || msg.isGlobalMention;
 
       // Only notify if window is not focused OR message is in another channel OR mentioned
       const shouldNotify = !isWindowFocused.current || msg.channelId !== selectedChannelId || isMentioned;
@@ -76,9 +76,12 @@ export function NotificationHandler({
         }
 
         if ("Notification" in window && Notification.permission === "granted") {
-          const title = isMentioned 
-            ? `⚠️ Mentioned by ${msg.authorName} in #${msg.channelName}`
-            : `${msg.authorName} in #${msg.channelName}`;
+          let title = `${msg.authorName} in #${msg.channelName}`;
+          if (isMentioned) {
+            title = msg.isGlobalMention 
+              ? `📢 @everyone mentioned by ${msg.authorName} in #${msg.channelName}`
+              : `⚠️ Mentioned by ${msg.authorName} in #${msg.channelName}`;
+          }
           
           const options: NotificationOptions & { renotify?: boolean; requireInteraction?: boolean } = {
             body: msg.content || "Image attached",

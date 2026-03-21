@@ -37,9 +37,10 @@ function formatTime(timestamp: number) {
 }
 
 function renderContent(content: string, isInput = false) {
-  const parts = content.split(/(@\w+)/g);
+  const parts = content.split(/(@\w+|@everyone)/g);
   return parts.map((part, i) => {
     if (part.startsWith("@")) {
+      const isGlobal = part === "@everyone";
       return (
         <strong 
           key={i} 
@@ -48,6 +49,7 @@ function renderContent(content: string, isInput = false) {
             fontWeight: isInput ? "inherit" : 800,
             background: isInput ? "rgba(122,110,245,0.15)" : "none",
             borderBottom: isInput ? "1px solid var(--accent)" : "none",
+            ...(isGlobal && !isInput ? { color: "var(--accent)", textDecoration: "underline" } : {})
           }}
         >
           {part}
@@ -695,7 +697,7 @@ function ChannelView({
     setReplyingTo(null);
   }, [channel._id]);
 
-  async function handleSend(mentions?: Id<"users">[]) {
+  async function handleSend(mentions?: Id<"users">[], isGlobalMention?: boolean) {
     const content = input.trim();
     if ((!content && !imageFile) || sending) return;
     setSending(true);
@@ -739,6 +741,7 @@ function ChannelView({
         imageId,
         replyToId: currentReplyToId,
         mentions,
+        isGlobalMention,
       });
       // Self mark read after sending
       void markRead({ channelId: channel._id });
@@ -852,7 +855,7 @@ function ChannelView({
           replyingTo={replyingTo}
           onCancelReply={() => setReplyingTo(null)}
           canSend={canSend}
-          onSend={(mentions) => void handleSend(mentions)}
+          onSend={(mentions, isGlobalMention) => void handleSend(mentions, isGlobalMention)}
           onKeyDown={handleKeyDown}
           textareaRef={textareaRef}
           placeholder={`Message #${channel.name}`}
@@ -884,7 +887,7 @@ function MessageInput({
   replyingTo: Doc<"messages"> | null;
   onCancelReply: () => void;
   canSend: boolean;
-  onSend: (mentions?: Id<"users">[]) => void;
+  onSend: (mentions?: Id<"users">[], isGlobalMention?: boolean) => void;
   onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   placeholder: string;
@@ -910,14 +913,25 @@ function MessageInput({
     setPrevMentionSearch(mentionSearch);
   }
 
-  const filteredUsers = useMemo(() => {
+  const filteredItems = useMemo(() => {
     if (mentionSearch === null) return [];
     const query = mentionSearch.toLowerCase();
-    return (users || [])
+    
+    const matchedUsers = users
       .filter(u => 
         u.email && (u.name?.toLowerCase().includes(query) || u.email.toLowerCase().includes(query))
       )
       .slice(0, 10);
+    
+    const results: ({ type: "user"; user: typeof users[0] } | { type: "everyone" })[] = [];
+    
+    if ("everyone".includes(query)) {
+      results.push({ type: "everyone" });
+    }
+    
+    matchedUsers.forEach(u => results.push({ type: "user", user: u }));
+    
+    return results;
   }, [users, mentionSearch]);
 
   const handleEmojiClick = (emojiObj: { emoji: string }) => {
@@ -925,18 +939,24 @@ function MessageInput({
     textareaRef.current?.focus();
   };
 
-  const insertMention = (user: { _id: Id<"users">; name?: string; email?: string }) => {
-    if (mentionSearch === null || !user.email) return;
+  const insertMention = (item: typeof filteredItems[0]) => {
+    if (mentionSearch === null) return;
     
     const cursor = textareaRef.current?.selectionStart ?? 0;
     const textBefore = input.substring(0, cursor - mentionSearch.length - 1);
     const textAfter = input.substring(cursor);
-    const name = user.name || getHandle(user.email);
+    
+    let name = "";
+    if (item.type === "everyone") {
+      name = "everyone";
+    } else {
+      name = item.user.name || getHandle(item.user.email || "");
+      setCurrentMentions(prev => new Set(prev).add(item.user._id));
+    }
     
     const newValue = `${textBefore}@${name} ${textAfter}`;
     setInput(newValue);
     setMentionSearch(null);
-    setCurrentMentions(prev => new Set(prev).add(user._id));
     
     // Focus back and move cursor
     setTimeout(() => {
@@ -966,25 +986,27 @@ function MessageInput({
         mentionsToSend.push(id);
       }
     });
-    onSend(mentionsToSend);
+
+    const isGlobalMention = input.includes("@everyone");
+    onSend(mentionsToSend, isGlobalMention);
     setCurrentMentions(new Set());
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (mentionSearch !== null && filteredUsers.length > 0) {
+    if (mentionSearch !== null && filteredItems.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setMentionIndex(prev => (prev + 1) % filteredUsers.length);
+        setMentionIndex(prev => (prev + 1) % filteredItems.length);
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setMentionIndex(prev => (prev - 1 + filteredUsers.length) % filteredUsers.length);
+        setMentionIndex(prev => (prev - 1 + filteredItems.length) % filteredItems.length);
         return;
       }
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
-        insertMention(filteredUsers[mentionIndex]);
+        insertMention(filteredItems[mentionIndex]);
         return;
       }
       if (e.key === "Escape") {
@@ -1004,7 +1026,7 @@ function MessageInput({
   return (
     <>
       <div style={{ position: "relative" }}>
-        {mentionSearch !== null && filteredUsers.length > 0 && (
+        {mentionSearch !== null && filteredItems.length > 0 && (
           <div style={{
             position: "absolute",
             bottom: "100%",
@@ -1018,10 +1040,10 @@ function MessageInput({
             overflow: "hidden",
             zIndex: 100,
           }}>
-            {filteredUsers.map((user, i) => (
+            {filteredItems.map((item, i) => (
               <div
-                key={user._id}
-                onClick={() => insertMention(user)}
+                key={item.type === "everyone" ? "everyone" : item.user._id}
+                onClick={() => insertMention(item)}
                 onMouseEnter={() => setMentionIndex(i)}
                 style={{
                   padding: "8px 12px",
@@ -1037,8 +1059,8 @@ function MessageInput({
                   width: 24,
                   height: 24,
                   borderRadius: 6,
-                  backgroundColor: user.imageUrl ? "transparent" : stringToColor(user.email || ""),
-                  backgroundImage: user.imageUrl ? `url(${user.imageUrl})` : "none",
+                  backgroundColor: item.type === "everyone" ? "var(--accent)" : (item.user.imageUrl ? "transparent" : stringToColor(item.user.email || "")),
+                  backgroundImage: item.type === "user" && item.user.imageUrl ? `url(${item.user.imageUrl})` : "none",
                   backgroundSize: "cover",
                   display: "flex",
                   alignItems: "center",
@@ -1047,14 +1069,23 @@ function MessageInput({
                   color: "#fff",
                   fontWeight: 700,
                 }}>
-                  {!user.imageUrl && getInitial(user.email || "")}
+                  {item.type === "everyone" ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="9" cy="7" r="4"></circle>
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                  ) : (
+                    !item.user.imageUrl && getInitial(item.user.email || "")
+                  )}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {user.name || getHandle(user.email || "")}
+                    {item.type === "everyone" ? "@everyone" : (item.user.name || getHandle(item.user.email || ""))}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {user.email}
+                    {item.type === "everyone" ? "Notify all users" : item.user.email}
                   </div>
                 </div>
               </div>

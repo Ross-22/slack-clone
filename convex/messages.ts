@@ -56,6 +56,7 @@ export const send = mutation({
     imageId: v.optional(v.id("_storage")),
     replyToId: v.optional(v.id("messages")),
     mentions: v.optional(v.array(v.id("users"))),
+    isGlobalMention: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -74,6 +75,7 @@ export const send = mutation({
       content,
       replyToId: args.replyToId,
       mentions: args.mentions,
+      isGlobalMention: args.isGlobalMention,
       ...(args.imageId ? { imageId: args.imageId } : {}),
     });
   },
