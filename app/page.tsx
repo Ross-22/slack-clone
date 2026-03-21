@@ -908,7 +908,7 @@ function MessageInput({
     const query = mentionSearch.toLowerCase();
     return users
       .filter(u => 
-        (u.name?.toLowerCase().includes(query) || u.email?.toLowerCase().includes(query))
+        u.email && (u.name?.toLowerCase().includes(query) || u.email.toLowerCase().includes(query))
       )
       .slice(0, 10);
   }, [users, mentionSearch]);
@@ -922,8 +922,8 @@ function MessageInput({
     textareaRef.current?.focus();
   };
 
-  const insertMention = (user: { _id: Id<"users">; name?: string; email: string }) => {
-    if (mentionSearch === null) return;
+  const insertMention = (user: { _id: Id<"users">; name?: string; email?: string }) => {
+    if (mentionSearch === null || !user.email) return;
     
     const cursor = textareaRef.current?.selectionStart ?? 0;
     const textBefore = input.substring(0, cursor - mentionSearch.length - 1);
