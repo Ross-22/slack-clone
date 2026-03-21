@@ -99,6 +99,15 @@ body {
   animation: fadeSlideUp 0.18s ease-out forwards;
 }
 
+@keyframes highlightFade {
+  0% { background: var(--accent-glow); }
+  100% { background: transparent; }
+}
+
+.msg-highlight {
+  animation: highlightFade 2.5s ease-out;
+}
+
 .skeleton {
   background: linear-gradient(
     90deg,

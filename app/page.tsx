@@ -41,6 +41,7 @@ function shouldGroup(
 ) {
   if (!prev) return false;
   if (prev.userId !== curr.userId) return false;
+  if (curr.replyToId) return false;
   return curr._creationTime - prev._creationTime < 5 * 60 * 1000;
 }
 
@@ -1154,7 +1155,7 @@ type MessageWithImage = Doc<"messages"> & {
   imageUrl?: string | null; 
   authorImageUrl?: string | null;
   authorName?: string | null;
-  replyTo?: { content?: string; authorEmail: string } | null;
+  replyTo?: { _id: Id<"messages">; content?: string; authorEmail: string } | null;
   reactions?: Doc<"reactions">[];
 };
 
@@ -1495,8 +1496,19 @@ function MessageItem({
     void toggleReaction({ messageId: message._id, emoji: hotbar[0] });
   };
 
+  const scrollToOriginal = () => {
+    if (!message.replyTo?._id) return;
+    const el = document.getElementById(`msg-${message.replyTo._id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("msg-highlight");
+      setTimeout(() => el.classList.remove("msg-highlight"), 2500);
+    }
+  };
+
   return (
     <div
+      id={`msg-${message._id}`}
       className="msg-enter"
       onMouseEnter={() => !isMobile && setHovered(true)}
       onMouseLeave={() => {
@@ -1598,6 +1610,68 @@ function MessageItem({
             maxWidth: "80%",
           }}
         >
+          {/* Reply label */}
+          {message.replyTo && (
+            <div
+              onClick={scrollToOriginal}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12,
+                color: "var(--text)",
+                marginBottom: -4,
+                paddingBottom: 4,
+                flexDirection: isOwn ? "row-reverse" : "row",
+                background: "rgba(255,255,255,0.03)",
+                padding: "4px 10px 8px",
+                borderRadius: "12px 12px 0 0",
+                border: "1px solid var(--border-strong)",
+                borderBottom: "none",
+                width: "fit-content",
+                position: "relative",
+                zIndex: 0,
+                cursor: "pointer",
+              }}
+              className="hover-scale"
+              title="Jump to message"
+            >
+              <svg 
+                width="13" 
+                height="13" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="var(--accent)" 
+                strokeWidth="2.5" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                style={{ transform: isOwn ? "scaleX(-1)" : "none", opacity: 0.9 }}
+              >
+                <polyline points="9 17 4 12 9 7"></polyline>
+                <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+              </svg>
+              <span style={{ display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+                <span style={{ color: "var(--text-muted)", fontSize: 11 }}>Replying to</span>
+                <span style={{ fontWeight: 700, color: "var(--accent)", fontSize: 12 }}>{getHandle(message.replyTo.authorEmail)}</span>
+                {message.replyTo.content && (
+                  <span style={{ 
+                    opacity: 0.6, 
+                    fontStyle: "italic",
+                    maxWidth: isMobile ? 120 : 200,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    display: "inline-block",
+                    fontSize: 11,
+                    marginLeft: 2
+                  }}>
+                    "{message.replyTo.content}"
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
+
           {/* Mobile-only hotbar with backdrop */}
           {showHotbar && isMobile && (
             <>

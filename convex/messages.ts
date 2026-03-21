@@ -31,6 +31,7 @@ export const list = query({
           const original = await ctx.db.get(msg.replyToId);
           if (original) {
             replyTo = {
+              _id: original._id,
               content: original.content,
               authorEmail: original.authorEmail,
             };
